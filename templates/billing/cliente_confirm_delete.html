@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+  <h3>Remover cliente</h3>
+  <p>Tem certeza que deseja remover <strong>{{ cliente.nome }}</strong>? Esta ação também removerá os boletos associados.</p>
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit" class="contrast">Sim, remover</button>
+    <a href="{% url 'clientes_list' %}" role="button" class="secondary">Cancelar</a>
+  </form>
+{% endblock %}

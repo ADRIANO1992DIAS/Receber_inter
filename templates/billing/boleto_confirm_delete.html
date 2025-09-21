@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+  <h3>Remover boleto</h3>
+  <p>Tem certeza que deseja remover o boleto de <strong>{{ boleto.cliente.nome }}</strong> referente a {{ boleto.competencia_mes }}/{{ boleto.competencia_ano }}?</p>
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit" class="contrast">Sim, remover</button>
+    <a href="{% url 'boletos_list' %}" role="button" class="secondary">Cancelar</a>
+  </form>
+{% endblock %}

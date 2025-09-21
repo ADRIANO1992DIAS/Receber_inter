@@ -1,0 +1,31 @@
+
+{% extends "base.html" %}
+{% block content %}
+  <h3>Clientes</h3>
+  <a href="{% url 'cliente_create' %}" role="button">+ Novo cliente</a>
+  <table>
+    <thead>
+      <tr>
+        <th>Nome</th><th>CPF/CNPJ</th><th>Valor</th><th>Venc.</th><th>E-mail</th><th>Cidade</th><th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in clientes %}
+        <tr>
+          <td>{{ c.nome }}</td>
+          <td>{{ c.cpfCnpj }}</td>
+          <td>R$ {{ c.valorNominal }}</td>
+          <td>{{ c.dataVencimento }}</td>
+          <td>{{ c.email }}</td>
+          <td>{{ c.cidade }}/{{ c.uf }}</td>
+          <td>
+            <a href="{% url 'cliente_update' c.id %}" role="button" class="secondary">Editar</a>
+            <a href="{% url 'cliente_delete' c.id %}" role="button" class="contrast">Excluir</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7">Nenhum cliente cadastrado.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

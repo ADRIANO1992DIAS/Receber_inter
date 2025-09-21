@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+  <h3>{{ titulo }}</h3>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="grid">
+      <label>{{ form.nome.label }} {{ form.nome }}</label>
+      <label>{{ form.cpfCnpj.label }} {{ form.cpfCnpj }}</label>
+    </div>
+    <div class="grid">
+      <label>{{ form.valorNominal.label }} {{ form.valorNominal }}</label>
+      <label>{{ form.dataVencimento.label }} {{ form.dataVencimento }}</label>
+    </div>
+    <div class="grid">
+      <label>{{ form.email.label }} {{ form.email }}</label>
+      <label>{{ form.telefone.label }} {{ form.telefone }}</label>
+    </div>
+    <div class="grid">
+      <label>{{ form.ddd.label }} {{ form.ddd }}</label>
+      <label>{{ form.cep.label }} {{ form.cep }}</label>
+    </div>
+    <label>{{ form.endereco.label }} {{ form.endereco }}</label>
+    <div class="grid">
+      <label>{{ form.numero.label }} {{ form.numero }}</label>
+      <label>{{ form.complemento.label }} {{ form.complemento }}</label>
+    </div>
+    <div class="grid">
+      <label>{{ form.bairro.label }} {{ form.bairro }}</label>
+      <label>{{ form.cidade.label }} {{ form.cidade }}</label>
+      <label>{{ form.uf.label }} {{ form.uf }}</label>
+    </div>
+    <button type="submit">Salvar</button>
+    <a href="{% url 'clientes_list' %}" role="button" class="secondary">Cancelar</a>
+  </form>
+{% endblock %}

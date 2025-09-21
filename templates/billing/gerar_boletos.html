@@ -1,0 +1,17 @@
+
+{% extends "base.html" %}
+{% block content %}
+  <h3>Gerar boletos</h3>
+  <form method="post">
+    {% csrf_token %}
+    <div class="grid">
+      <div>{{ form.ano.label_tag }} {{ form.ano }}</div>
+      <div>{{ form.mes.label_tag }} {{ form.mes }}</div>
+    </div>
+    <fieldset>
+      <legend>{{ form.clientes.label }}</legend>
+      {{ form.clientes }}
+    </fieldset>
+    <button type="submit">Gerar</button>
+  </form>
+{% endblock %}

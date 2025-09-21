@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login • Contas a Receber</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+      body { display:flex; min-height:100vh; align-items:center; justify-content:center; background:#f5f6fa; }
+      main { width:100%; max-width:360px; padding:2rem; background:#fff; border-radius:12px; box-shadow:0 12px 48px rgba(15,23,42,.12); }
+      h1 { margin-bottom:1rem; text-align:center; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Entrar</h1>
+      {% if form.non_field_errors %}
+        <article class="contrast">{{ form.non_field_errors }}</article>
+      {% endif %}
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <label>
+          {{ form.username.label }}
+          {{ form.username }}
+        </label>
+        <label>
+          {{ form.password.label }}
+          {{ form.password }}
+        </label>
+        {% if form.username.errors %}
+          <small class="contrast">{{ form.username.errors|join:", " }}</small>
+        {% endif %}
+        {% if form.password.errors %}
+          <small class="contrast">{{ form.password.errors|join:", " }}</small>
+        {% endif %}
+        {% if next %}
+          <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+        <button type="submit">Acessar</button>
+      </form>
+    </main>
+  </body>
+</html>

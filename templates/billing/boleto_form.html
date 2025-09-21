@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+  <h3>{{ titulo }}</h3>
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <label>{{ form.cliente.label }} {{ form.cliente }}</label>
+    <div class="grid">
+      <label>{{ form.competencia_ano.label }} {{ form.competencia_ano }}</label>
+      <label>{{ form.competencia_mes.label }} {{ form.competencia_mes }}</label>
+    </div>
+    <div class="grid">
+      <label>{{ form.data_vencimento.label }} {{ form.data_vencimento }}</label>
+      <label>{{ form.valor.label }} {{ form.valor }}</label>
+    </div>
+    <label>{{ form.status.label }} {{ form.status }}</label>
+    <label>{{ form.nosso_numero.label }} {{ form.nosso_numero }}</label>
+    <label>{{ form.linha_digitavel.label }} {{ form.linha_digitavel }}</label>
+    <label>{{ form.codigo_barras.label }} {{ form.codigo_barras }}</label>
+    <label>{{ form.tx_id.label }} {{ form.tx_id }}</label>
+    <label>{{ form.codigo_solicitacao.label }} {{ form.codigo_solicitacao }}</label>
+    <label>{{ form.data_pagamento.label }} {{ form.data_pagamento }}</label>
+    <label>{{ form.pdf.label }} {{ form.pdf }}</label>
+    <button type="submit">Salvar</button>
+    <a href="{% url 'boletos_list' %}" role="button" class="secondary">Cancelar</a>
+  </form>
+{% endblock %}

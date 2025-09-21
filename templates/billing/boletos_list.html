@@ -1,0 +1,41 @@
+
+{% extends "base.html" %}
+{% block content %}
+  <h3>Boletos</h3>
+  <a href="{% url 'boleto_create' %}" role="button">+ Novo boleto</a>
+  <table>
+    <thead>
+      <tr>
+        <th>Cliente</th><th>Comp.</th><th>Vencimento</th><th>Valor</th><th>Status</th><th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in boletos %}
+        <tr>
+          <td>{{ b.cliente.nome }}</td>
+          <td>{{ b.competencia_mes }}/{{ b.competencia_ano }}</td>
+          <td>{{ b.data_vencimento }}</td>
+          <td>R$ {{ b.valor }}</td>
+          <td><span class="badge">{{ b.status }}</span></td>
+          <td>
+            {% if b.pdf %}
+              <a href="{% url 'baixar_pdf' b.id %}" role="button">PDF</a>
+            {% else %}
+              <a href="{% url 'baixar_pdf' b.id %}" role="button" class="secondary">Baixar PDF</a>
+            {% endif %}
+            {% if b.status != "pago" %}
+              <a href="{% url 'marcar_pago' b.id %}" role="button" class="contrast">Marcar pago</a>
+            {% endif %}
+            {% if b.status != "cancelado" %}
+              <a href="{% url 'cancelar_boleto' b.id %}" role="button" class="secondary">Cancelar</a>
+            {% endif %}
+            <a href="{% url 'boleto_update' b.id %}" role="button" class="secondary">Editar</a>
+            <a href="{% url 'boleto_delete' b.id %}" role="button" class="contrast">Excluir</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">Nenhum boleto gerado.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

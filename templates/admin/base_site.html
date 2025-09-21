@@ -1,0 +1,8 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {% trans 'Django site admin' %}{% endblock %}
+
+{% block nav-global %}
+  <a href="{% url 'clientes_list' %}" class="button" style="margin-left:1rem;">Ir para Clientes</a>
+{% endblock %}
