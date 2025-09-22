@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, Optional
 
 import pandas as pd
 import requests
@@ -9,14 +10,40 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parents[1]
 CREDENTIALS_DIR = BASE_DIR / "config" / "inter"
 
+
+def _resolve_cert_path(raw_value: Optional[str], filename: str) -> str:
+    if raw_value:
+        candidate = Path(raw_value)
+        if not candidate.is_absolute():
+            candidate = CREDENTIALS_DIR / candidate
+    else:
+        candidate = CREDENTIALS_DIR / filename
+    return str(candidate)
+
+
+# Mantém compatibilidade com scripts antigos, mas respeitando limite da API
+def _montar_seu_numero(dados: Dict[str, str], data_vencimento: datetime) -> str:
+    fornecido = str(dados.get("seuNumero", "")).strip()
+    if fornecido:
+        sanitizado = "".join(ch for ch in fornecido if ch.isalnum()) or fornecido.replace(" ", "")
+        return sanitizado[:15]
+
+    cpf_cnpj = "".join(ch for ch in str(dados.get("cpfCnpj", "")) if ch.isalnum()) or "SN"
+    sufixo = data_vencimento.strftime("%y%m%d")
+    max_base = max(0, 15 - len(sufixo))
+    base = cpf_cnpj[-max_base:] if max_base else ""
+    resultado = (base + sufixo)[:15]
+    return resultado or sufixo[-15:]
+
+
 # Carregar variáveis de ambiente
 load_dotenv(CREDENTIALS_DIR / ".env")
 
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 CONTA_CORRENTE = os.getenv("CONTA_CORRENTE")
-CERT_PATH = os.getenv("CERT_PATH", str(CREDENTIALS_DIR / "Inter_API_Certificado.crt"))
-KEY_PATH = os.getenv("KEY_PATH", str(CREDENTIALS_DIR / "Inter_API_Chave.key"))
+CERT_PATH = _resolve_cert_path(os.getenv("CERT_PATH"), "Inter_API_Certificado.crt")
+KEY_PATH = _resolve_cert_path(os.getenv("KEY_PATH"), "Inter_API_Chave.key")
 
 AUTH_URL = "https://cdpj.partners.bancointer.com.br/oauth/v2/token"
 COBRANCA_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas"
@@ -76,7 +103,7 @@ def emitir_boleto(token, dados):
 
     # Monta body para a API do Banco Inter
     body = {
-        "seuNumero": str(dados["seuNumero"]),
+        "seuNumero": _montar_seu_numero(dados, data_obj),
         "valorNominal": valor,
         "dataVencimento": str(data_formatada),
         "numDiasAgenda": 30,

@@ -23,13 +23,37 @@ def _tipo_pessoa(cpf_cnpj: str) -> str:
     return "JURIDICA" if len(digitos) > 11 else "FISICA"
 
 
+def _resolve_cert_path(raw_value: Optional[str], filename: str) -> str:
+    if raw_value:
+        candidate = Path(raw_value)
+        if not candidate.is_absolute():
+            candidate = CREDENTIALS_DIR / candidate
+    else:
+        candidate = CREDENTIALS_DIR / filename
+    return str(candidate)
+
+
+def _montar_seu_numero(cliente_dict: Dict[str, Any], data_venc: dt.date) -> str:
+    fornecido = str(cliente_dict.get("seuNumero", "")).strip()
+    if fornecido:
+        sanitizado = "".join(ch for ch in fornecido if ch.isalnum()) or fornecido.replace(" ", "")
+        return sanitizado[:15]
+
+    cpf_cnpj = "".join(ch for ch in str(cliente_dict.get("cpfCnpj", "")) if ch.isalnum()) or "SN"
+    sufixo = data_venc.strftime("%y%m%d")  # garante diferença por competência/dia
+    max_base = max(0, 15 - len(sufixo))
+    base = cpf_cnpj[-max_base:] if max_base else ""
+    resultado = (base + sufixo)[:15]
+    return resultado or sufixo[-15:]
+
+
 class InterService:
     def __init__(self) -> None:
         self.client_id = os.getenv("CLIENT_ID")
         self.client_secret = os.getenv("CLIENT_SECRET")
         self.conta_corrente = os.getenv("CONTA_CORRENTE")
-        self.cert_path = os.getenv("CERT_PATH", str(CREDENTIALS_DIR / "Inter_API_Certificado.crt"))
-        self.key_path = os.getenv("KEY_PATH", str(CREDENTIALS_DIR / "Inter_API_Chave.key"))
+        self.cert_path = _resolve_cert_path(os.getenv("CERT_PATH"), "Inter_API_Certificado.crt")
+        self.key_path = _resolve_cert_path(os.getenv("KEY_PATH"), "Inter_API_Chave.key")
 
         if not all([self.client_id, self.client_secret, self.conta_corrente]):
             raise RuntimeError("CLIENT_ID, CLIENT_SECRET e CONTA_CORRENTE precisam estar definidos no .env.")
@@ -89,9 +113,7 @@ class InterService:
         if not nome:
             raise ValueError("Nome é obrigatório para emissão do boleto.")
 
-        competencia = data_venc.strftime("%Y%m")
-        numero_base = "".join(ch for ch in cpf_cnpj if ch.isdigit()) or "SN"
-        seu_numero = str(cliente_dict.get("seuNumero") or f"{numero_base}-{competencia}")[:20]
+        seu_numero = _montar_seu_numero(cliente_dict, data_venc)
 
         token = self._obter_token("boleto-cobranca.write")
 

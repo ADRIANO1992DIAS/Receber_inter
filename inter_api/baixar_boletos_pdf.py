@@ -10,13 +10,25 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 CREDENTIALS_DIR = BASE_DIR / "config" / "inter"
+
+
+def _resolve_cert_path(raw_value: Optional[str], filename: str) -> str:
+    if raw_value:
+        candidate = Path(raw_value)
+        if not candidate.is_absolute():
+            candidate = CREDENTIALS_DIR / candidate
+    else:
+        candidate = CREDENTIALS_DIR / filename
+    return str(candidate)
+
+
 load_dotenv(CREDENTIALS_DIR / ".env")
 
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 CONTA_CORRENTE = os.getenv("CONTA_CORRENTE")
-CERT_PATH = os.getenv("CERT_PATH", str(CREDENTIALS_DIR / "Inter_API_Certificado.crt"))
-KEY_PATH = os.getenv("KEY_PATH", str(CREDENTIALS_DIR / "Inter_API_Chave.key"))
+CERT_PATH = _resolve_cert_path(os.getenv("CERT_PATH"), "Inter_API_Certificado.crt")
+KEY_PATH = _resolve_cert_path(os.getenv("KEY_PATH"), "Inter_API_Chave.key")
 
 AUTH_URL = "https://cdpj.partners.bancointer.com.br/oauth/v2/token"
 PDF_URL_TEMPLATE = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas/{identificador}/pdf"
