@@ -179,14 +179,16 @@ def emitir_boleto_api(
         json=body,
     )
 
-    if response.status_code != 201:
+    if not response.ok:
         print("✅ Body enviado para depuração:")
         print(body)
         print("✅ Resposta do servidor:")
         print(response.text)
-
     response.raise_for_status()
-    return response.json()
+    try:
+        return response.json()
+    except ValueError as exc:  # noqa: BLE001
+        raise RuntimeError("Não foi possível interpretar a resposta da emissão.") from exc
 
 
 def emitir_boleto(

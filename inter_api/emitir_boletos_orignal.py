@@ -147,14 +147,17 @@ def emitir_boleto(token, dados):
         json=body
     )
 
-    if response.status_code != 201:
+    if not response.ok:
         print("✅ Body enviado para depuração:")
         print(body)
         print("✅ Resposta do servidor:")
         print(response.text)
 
     response.raise_for_status()
-    retorno = response.json()
+    try:
+        retorno = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Não foi possível interpretar a resposta da emissão.") from exc
     codigo = retorno.get("codigoSolicitacao")
     print(f"✅ Cobrança emitida para {dados['nome']}: {codigo}")
     return codigo

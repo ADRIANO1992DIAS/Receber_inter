@@ -152,13 +152,19 @@ class InterService:
             json=body,
         )
 
-        if response.status_code != 201:
+        if not response.ok:
             conteudo = response.text
             raise RuntimeError(
                 f"Falha ao emitir boleto para {nome}. Status {response.status_code}. Resposta: {conteudo}"
             )
 
-        retorno = response.json()
+        try:
+            retorno = response.json()
+        except ValueError as exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"Falha ao interpretar resposta da emissão para {nome}."
+            ) from exc
+
         return {
             "nossoNumero": retorno.get("nossoNumero", ""),
             "linhaDigitavel": retorno.get("linhaDigitavel", ""),
