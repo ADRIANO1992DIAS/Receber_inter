@@ -2,9 +2,13 @@ import os
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, Optional
 
-import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+try:
+    import pandas as pd
+except Exception:  # noqa: BLE001 - pandas é opcional para rodar via Django
+    pd = None  # type: ignore[assignment]
 
 # Carregar variáveis de ambiente para uso CLI
 load_dotenv()
@@ -49,12 +53,18 @@ def _tipo_pessoa(cpf_cnpj: str) -> str:
     return "JURIDICA" if len(digits) > 11 else "FISICA"
 
 
+if pd is not None:
+    _pandas_timestamp = (pd.Timestamp,)
+else:
+    _pandas_timestamp = tuple()
+
+
 def _normalizar_data(valor: Any) -> datetime:
     if isinstance(valor, datetime):
         return valor
     if isinstance(valor, date):
         return datetime.combine(valor, datetime.min.time())
-    if isinstance(valor, pd.Timestamp):
+    if _pandas_timestamp and isinstance(valor, _pandas_timestamp):
         return valor.to_pydatetime()
     if isinstance(valor, str):
         valor = valor.strip()
@@ -198,6 +208,8 @@ def emitir_boleto(
 
 
 def salvar_codigos_excel(lista_codigos: Iterable[Iterable[Any]]) -> None:
+    if pd is None:
+        raise RuntimeError("pandas não está disponível para salvar os códigos em Excel.")
     df = pd.DataFrame(list(lista_codigos), columns=["codigoSolicitacao", "nome"])
     df.to_excel("codigos_emitidos.xlsx", index=False)
     print("📄 Todos os códigos salvos em 'codigos_emitidos.xlsx'")
@@ -205,6 +217,10 @@ def salvar_codigos_excel(lista_codigos: Iterable[Iterable[Any]]) -> None:
 
 if __name__ == "__main__":
     try:
+        if pd is None:
+            raise RuntimeError(
+                "pandas não está instalado. Instale-o para executar a emissão via linha de comando."
+            )
         token = obter_token()
         df = pd.read_excel(
             "clientes_boletos_092025_teste.xlsx",
