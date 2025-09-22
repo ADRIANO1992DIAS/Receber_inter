@@ -70,3 +70,4 @@ Se esses módulos não existirem, o sistema **simula** a emissão (gera um `noss
 - Banco de dados: SQLite (persistido em `./data/db.sqlite3` via volume do Docker)
 - PDFs salvos em `./media/boletos/`
 - Cancelamento: integração real via `InterService.cancelar_boleto`, usando `codigoSolicitacao` (ou `nossoNumero` como fallback) para chamar a API do Banco Inter.
+- Na tela de boletos é possível marcar vários registros e baixar todos os PDFs em um único arquivo `.zip`.

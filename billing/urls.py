@@ -14,6 +14,7 @@ urlpatterns = [
     path("boletos/<int:boleto_id>/excluir/", views.boleto_delete, name="boleto_delete"),
     path("gerar/", views.gerar_boletos, name="gerar_boletos"),
     path("boletos/<int:boleto_id>/pdf/", views.baixar_pdf_view, name="baixar_pdf"),
+    path("boletos/pdfs/", views.baixar_pdf_lote, name="baixar_pdf_lote"),
     path("boletos/<int:boleto_id>/pagar/", views.marcar_pago, name="marcar_pago"),
     path("boletos/<int:boleto_id>/cancelar/", views.cancelar_boleto, name="cancelar_boleto"),
 ]

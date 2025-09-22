@@ -1,16 +1,51 @@
 import base64
 import calendar
 import datetime as dt
+import io
+import zipfile
+from pathlib import Path
+from typing import Optional, List, Set
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import FileResponse, HttpResponseNotFound
+from django.http import FileResponse, HttpResponseNotFound, HttpResponse
 from django.db import transaction
 from django.contrib.auth.decorators import login_required
+from django.core.files.base import ContentFile
+from django.utils.text import slugify
 
 from .models import Cliente, Boleto
 from .forms import SelecionarClientesForm, ClienteForm, BoletoForm
 from .services.inter_service import InterService
+
+
+def _arquivo_pdf_nome(boleto: Boleto) -> str:
+    competencia = f"{boleto.competencia_mes:02d}-{boleto.competencia_ano}"
+    base = f"{boleto.cliente.nome}-{competencia}-{boleto.id}"
+    slug = slugify(base)
+    if not slug:
+        slug = f"boleto-{boleto.id}"
+    return f"{slug}.pdf"
+
+
+def _buscar_pdf_bytes(inter: InterService, boleto: Boleto) -> Optional[bytes]:
+    if boleto.pdf:
+        with boleto.pdf.open("rb") as stream:
+            return stream.read()
+
+    identificadores = [
+        (boleto.nosso_numero, "nosso_numero"),
+        (boleto.codigo_solicitacao, "codigo_solicitacao"),
+    ]
+    for ident, campo in identificadores:
+        if not ident:
+            continue
+        pdf_bytes = inter.baixar_pdf(ident, campo=campo)
+        if pdf_bytes:
+            if isinstance(pdf_bytes, str):
+                pdf_bytes = base64.b64decode(pdf_bytes)
+            return pdf_bytes
+    return None
 
 
 def home(request):
@@ -103,12 +138,12 @@ def gerar_boletos(request):
 
         with transaction.atomic():
             for cli in clientes:
-                # Calcula data de vencimento (ajustando para último dia do mês, se necessário)
+                # Calcula data de vencimento (ajustando para ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âºltimo dia do mÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªs, se necessÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡rio)
                 last_day = calendar.monthrange(ano, mes)[1]
                 dia = min(cli.dataVencimento, last_day)
                 data_venc = dt.date(ano, mes, dia)
 
-                # Evita duplicidade da mesma competência
+                # Evita duplicidade da mesma competÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Âªncia
                 boleto, created = Boleto.objects.get_or_create(
                     cliente=cli, competencia_ano=ano, competencia_mes=mes,
                     defaults={
@@ -117,10 +152,10 @@ def gerar_boletos(request):
                     }
                 )
                 if not created:
-                    messages.info(request, f"Boleto já existia: {cli.nome} {mes:02d}/{ano}")
+                    messages.info(request, f"Boleto jÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ existia: {cli.nome} {mes:02d}/{ano}")
                     continue
 
-                # Monta dict no formato esperado pelo serviço (Banco Inter)
+                # Monta dict no formato esperado pelo serviÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§o (Banco Inter)
                 cli_dict = {
                     "valorNominal": float(cli.valorNominal),
                     "nome": cli.nome,
@@ -146,7 +181,7 @@ def gerar_boletos(request):
                     boleto.status = "emitido"
                     boleto.save()
 
-                    # tenta baixar PDF logo após emitir
+                    # tenta baixar PDF logo apÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³s emitir
                     identificadores = [
                         (boleto.nosso_numero, "nosso_numero"),
                         (boleto.codigo_solicitacao, "codigo_solicitacao"),
@@ -171,32 +206,90 @@ def gerar_boletos(request):
                     boleto.save()
                     messages.error(request, f"Erro ao emitir boleto de {cli.nome}: {e}")
 
-            messages.success(request, "Processo de emissão finalizado.")
+            messages.success(request, "Processo de emissÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o finalizado.")
         return redirect("boletos_list")
 
     return render(request, "billing/gerar_boletos.html", {"form": form})
 
-
 @login_required
 def baixar_pdf_view(request, boleto_id: int):
     boleto = get_object_or_404(Boleto, id=boleto_id)
-    if boleto.pdf:
-        return FileResponse(boleto.pdf.open("rb"), as_attachment=True, filename=f"boleto_{boleto.id}.pdf")
-    # tenta baixar caso não tenha sido salvo ainda
     inter = InterService()
-    for identificador, campo in ((boleto.nosso_numero, "nosso_numero"), (boleto.codigo_solicitacao, "codigo_solicitacao")):
-        if not identificador:
-            continue
-        pdf_bytes = inter.baixar_pdf(identificador, campo=campo)
-        if pdf_bytes:
-            if isinstance(pdf_bytes, str):
-                pdf_bytes = base64.b64decode(pdf_bytes)
-            from django.core.files.base import ContentFile
-            boleto.pdf.save(f"boleto_{boleto.id}.pdf", ContentFile(pdf_bytes))
-            boleto.save()
-            return FileResponse(boleto.pdf.open("rb"), as_attachment=True, filename=f"boleto_{boleto.id}.pdf")
-    return HttpResponseNotFound("PDF não disponível.")
+    pdf_bytes = _buscar_pdf_bytes(inter, boleto)
+    if not pdf_bytes:
+        return HttpResponseNotFound("PDF nao disponivel.")
 
+    if not boleto.pdf:
+        filename = _arquivo_pdf_nome(boleto)
+        boleto.pdf.save(filename, ContentFile(pdf_bytes))
+        boleto.save(update_fields=["pdf"])
+
+    stored_name = Path(boleto.pdf.name).name if boleto.pdf else _arquivo_pdf_nome(boleto)
+    return FileResponse(
+        boleto.pdf.open("rb"),
+        as_attachment=True,
+        filename=stored_name,
+    )
+
+
+@login_required
+def baixar_pdf_lote(request):
+    if request.method != "POST":
+        messages.info(request, "Selecione os boletos desejados e use o botao de download.")
+        return redirect("boletos_list")
+
+    ids = request.POST.getlist("boletos")
+    if not ids:
+        messages.info(request, "Selecione ao menos um boleto para baixar.")
+        return redirect("boletos_list")
+
+    boletos = list(Boleto.objects.filter(id__in=ids).select_related("cliente"))
+    if not boletos:
+        messages.error(request, "Nenhum boleto encontrado para os identificadores informados.")
+        return redirect("boletos_list")
+
+    inter = InterService()
+    buffer = io.BytesIO()
+    erros: List[str] = []
+    nomes_utilizados: Set[str] = set()
+    sucesso = 0
+
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_stream:
+        for boleto in boletos:
+            pdf_bytes = _buscar_pdf_bytes(inter, boleto)
+            if not pdf_bytes:
+                erros.append(f"Boleto {boleto.id} - {boleto.cliente.nome}")
+                continue
+
+            sucesso += 1
+            if not boleto.pdf:
+                filename = _arquivo_pdf_nome(boleto)
+                boleto.pdf.save(filename, ContentFile(pdf_bytes))
+                boleto.save(update_fields=["pdf"])
+
+            stored_name = Path(boleto.pdf.name).name if boleto.pdf else _arquivo_pdf_nome(boleto)
+            nome_zip = stored_name
+            base_name = Path(stored_name).stem or f"boleto_{boleto.id}"
+            extension = Path(stored_name).suffix or ".pdf"
+            contador = 1
+            while nome_zip in nomes_utilizados:
+                nome_zip = f"{base_name}_{contador}{extension}"
+                contador += 1
+            nomes_utilizados.add(nome_zip)
+            zip_stream.writestr(nome_zip, pdf_bytes)
+
+        if erros:
+            conteudo_erros = "Nao foi possivel obter o PDF dos seguintes boletos:\n" + "\n".join(erros)
+            zip_stream.writestr("boletos_com_erro.txt", conteudo_erros)
+
+    if sucesso == 0:
+        messages.error(request, "Nao foi possivel baixar o PDF de nenhum boleto selecionado.")
+        return redirect("boletos_list")
+
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type="application/zip")
+    response["Content-Disposition"] = "attachment; filename=boletos_selecionados.zip"
+    return response
 
 @login_required
 def marcar_pago(request, boleto_id: int):
@@ -217,7 +310,7 @@ def cancelar_boleto(request, boleto_id: int):
             codigo_solicitacao=boleto.codigo_solicitacao or "",
             nosso_numero=boleto.nosso_numero or "",
         )
-    except Exception as exc:  # noqa: BLE001 - queremos exibir o motivo ao usuário
+    except Exception as exc:  # noqa: BLE001 - queremos exibir o motivo ao usuÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡rio
         boleto.erro_msg = str(exc)
         boleto.save(update_fields=["erro_msg"])
         messages.error(request, f"Falha ao cancelar via API: {exc}")
@@ -229,8 +322,8 @@ def cancelar_boleto(request, boleto_id: int):
         if situacao:
             messages.success(
                 request,
-                f"Cobrança cancelada. Situação informada pelo Inter: {situacao}",
+                f"CobranÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§a cancelada. SituaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o informada pelo Inter: {situacao}",
             )
         else:
-            messages.success(request, "Cobrança cancelada com sucesso no Inter.")
+            messages.success(request, "CobranÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§a cancelada com sucesso no Inter.")
     return redirect("boletos_list")

@@ -2,16 +2,25 @@
 {% extends "base.html" %}
 {% block content %}
   <h3>Boletos</h3>
-  <a href="{% url 'boleto_create' %}" role="button">+ Novo boleto</a>
-  <table>
+  <div class="toolbar">
+    <a href="{% url 'boleto_create' %}" role="button">+ Novo boleto</a>
+  </div>
+  <form method="post" action="{% url 'baixar_pdf_lote' %}">
+    {% csrf_token %}
+    <div class="toolbar">
+      <button type="submit" class="secondary">Baixar PDFs selecionados</button>
+    </div>
+    <table>
     <thead>
       <tr>
+        <th><input type="checkbox" id="selecionar-todos" title="Selecionar todos"></th>
         <th>Cliente</th><th>Comp.</th><th>Vencimento</th><th>Valor</th><th>Status</th><th>Ações</th>
       </tr>
     </thead>
     <tbody>
       {% for b in boletos %}
         <tr>
+          <td><input type="checkbox" name="boletos" value="{{ b.id }}" class="selecao-boleto"></td>
           <td>{{ b.cliente.nome }}</td>
           <td>{{ b.competencia_mes }}/{{ b.competencia_ano }}</td>
           <td>{{ b.data_vencimento }}</td>
@@ -34,8 +43,23 @@
           </td>
         </tr>
       {% empty %}
-        <tr><td colspan="6">Nenhum boleto gerado.</td></tr>
+        <tr><td colspan="7">Nenhum boleto gerado.</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+    </table>
+  </form>
+
+  <script>
+    (function() {
+      const seletor = document.getElementById('selecionar-todos');
+      if (!seletor) {
+        return;
+      }
+      seletor.addEventListener('change', function () {
+        document.querySelectorAll('.selecao-boleto').forEach(function (cb) {
+          cb.checked = seletor.checked;
+        });
+      });
+    }());
+  </script>
 {% endblock %}
