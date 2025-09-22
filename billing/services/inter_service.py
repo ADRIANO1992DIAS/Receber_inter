@@ -1,8 +1,9 @@
 import base64
 import os
+import unicodedata
 import datetime as dt
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 import requests
 from dotenv import load_dotenv
@@ -15,6 +16,8 @@ load_dotenv(ENV_PATH)
 
 AUTH_URL = "https://cdpj.partners.bancointer.com.br/oauth/v2/token"
 COBRANCA_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas"
+COBRANCA_CANCELAR_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas/{codigo_solicitacao}/cancelar"
+CANCELAR_BOLETO_V2_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v2/boletos/{nosso_numero}/cancelar"
 PDF_URL_TEMPLATE = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas/{identificador}/pdf"
 
 
@@ -208,6 +211,90 @@ class InterService:
             f"Falha ao baixar PDF ({response.status_code}): {response.text}"
         )
 
-    def cancelar_boleto(self, nosso_numero: str) -> bool:
-        # TODO: Evoluir para chamar a API oficial do Inter para baixa/cancelamento.
-        return True
+    def cancelar_boleto(
+        self,
+        *,
+        codigo_solicitacao: str = "",
+        nosso_numero: str = "",
+        motivo: str = "Solicitação do cliente",
+    ) -> Dict[str, Any]:
+        if not codigo_solicitacao and not nosso_numero:
+            raise ValueError("Informe codigo_solicitacao ou nosso_numero para cancelar o boleto.")
+
+        motivo = (motivo or "Solicitação do cliente").strip() or "Solicitação do cliente"
+        motivo_v3 = motivo[:50]
+
+        token = self._obter_token("boleto-cobranca.write")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "x-conta-corrente": self.conta_corrente,
+            "Content-Type": "application/json",
+        }
+
+        erros: List[str] = []
+
+        if codigo_solicitacao:
+            url = COBRANCA_CANCELAR_URL.format(codigo_solicitacao=codigo_solicitacao)
+            response = requests.post(
+                url,
+                headers=headers,
+                cert=(self.cert_path, self.key_path),
+                json={"motivoCancelamento": motivo_v3},
+            )
+            if response.ok:
+                payload: Dict[str, Any]
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = {}
+                payload.setdefault("codigoSolicitacao", codigo_solicitacao)
+                payload.setdefault("motivoCancelamento", motivo_v3)
+                payload.setdefault("via", "v3")
+                payload.setdefault("status_code", response.status_code)
+                return payload
+            erros.append(
+                f"codigoSolicitacao {codigo_solicitacao}: {response.status_code} - {response.text}"
+            )
+
+        if nosso_numero:
+            url = CANCELAR_BOLETO_V2_URL.format(nosso_numero=nosso_numero)
+            motivo_enum = self._normalizar_motivo_v2(motivo)
+            response = requests.post(
+                url,
+                headers=headers,
+                cert=(self.cert_path, self.key_path),
+                json={"motivoCancelamento": motivo_enum},
+            )
+            if response.ok:
+                payload: Dict[str, Any]
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = {}
+                payload.setdefault("nossoNumero", nosso_numero)
+                payload.setdefault("motivoCancelamento", motivo_enum)
+                payload.setdefault("via", "v2")
+                payload.setdefault("status_code", response.status_code)
+                return payload
+            erros.append(
+                f"nossoNumero {nosso_numero}: {response.status_code} - {response.text}"
+            )
+
+        raise RuntimeError("; ".join(erros))
+
+    @staticmethod
+    def _normalizar_motivo_v2(motivo: str) -> str:
+        padrao = "Solicitação do cliente"
+        if not motivo:
+            motivo = padrao
+        texto = (
+            unicodedata.normalize("NFKD", motivo.strip())
+            .encode("ASCII", "ignore")
+            .decode()
+            .upper()
+        )
+        texto_sem_espaco = "".join(ch for ch in texto if ch.isalpha())
+        opcoes = {"ACERTOS", "APEDIDODOCLIENTE", "PAGODIRETOAOCLIENTE", "SUBSTITUICAO"}
+        if texto_sem_espaco in opcoes:
+            return texto_sem_espaco
+        return "APEDIDODOCLIENTE"

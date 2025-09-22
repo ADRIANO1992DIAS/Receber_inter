@@ -69,4 +69,4 @@ Se esses módulos não existirem, o sistema **simula** a emissão (gera um `noss
 
 - Banco de dados: SQLite (persistido em `./data/db.sqlite3` via volume do Docker)
 - PDFs salvos em `./media/boletos/`
-- Cancelamento: marca como cancelado no sistema e há um hook (`InterService.cancelar_boleto`) para evoluir chamando a API oficial do Inter.
+- Cancelamento: integração real via `InterService.cancelar_boleto`, usando `codigoSolicitacao` (ou `nossoNumero` como fallback) para chamar a API do Banco Inter.

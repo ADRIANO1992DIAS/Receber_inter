@@ -211,11 +211,26 @@ def marcar_pago(request, boleto_id: int):
 @login_required
 def cancelar_boleto(request, boleto_id: int):
     boleto = get_object_or_404(Boleto, id=boleto_id)
-    ok = InterService().cancelar_boleto(boleto.nosso_numero or "")
-    if ok:
-        boleto.status = "cancelado"
-        boleto.save()
-        messages.success(request, "Cobrança cancelada no sistema.")
+    inter = InterService()
+    try:
+        resultado = inter.cancelar_boleto(
+            codigo_solicitacao=boleto.codigo_solicitacao or "",
+            nosso_numero=boleto.nosso_numero or "",
+        )
+    except Exception as exc:  # noqa: BLE001 - queremos exibir o motivo ao usuário
+        boleto.erro_msg = str(exc)
+        boleto.save(update_fields=["erro_msg"])
+        messages.error(request, f"Falha ao cancelar via API: {exc}")
     else:
-        messages.error(request, "Falha ao cancelar via API. Nada foi alterado.")
+        boleto.status = "cancelado"
+        boleto.erro_msg = ""
+        boleto.save(update_fields=["status", "erro_msg"])
+        situacao = resultado.get("situacao") or resultado.get("status")
+        if situacao:
+            messages.success(
+                request,
+                f"Cobrança cancelada. Situação informada pelo Inter: {situacao}",
+            )
+        else:
+            messages.success(request, "Cobrança cancelada com sucesso no Inter.")
     return redirect("boletos_list")
