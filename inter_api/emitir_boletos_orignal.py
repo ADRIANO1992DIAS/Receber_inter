@@ -1,17 +1,22 @@
 import os
-import requests
-import pandas as pd
-from dotenv import load_dotenv
 from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+import requests
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+CREDENTIALS_DIR = BASE_DIR / "config" / "inter"
 
 # Carregar variáveis de ambiente
-load_dotenv()
+load_dotenv(CREDENTIALS_DIR / ".env")
 
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 CONTA_CORRENTE = os.getenv("CONTA_CORRENTE")
-CERT_PATH = "Inter_API_Certificado.crt"
-KEY_PATH = "Inter_API_Chave.key"
+CERT_PATH = os.getenv("CERT_PATH", str(CREDENTIALS_DIR / "Inter_API_Certificado.crt"))
+KEY_PATH = os.getenv("KEY_PATH", str(CREDENTIALS_DIR / "Inter_API_Chave.key"))
 
 AUTH_URL = "https://cdpj.partners.bancointer.com.br/oauth/v2/token"
 COBRANCA_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas"

@@ -1,100 +1,185 @@
+import base64
 import os
 import datetime as dt
+from pathlib import Path
 from typing import Optional, Dict, Any
 
-try:
-    from inter_api import emitir_boletos as _emit_mod
-except Exception as exc:  # noqa: BLE001 - guardamos para informar claramente no runtime
-    _emit_mod = None  # type: ignore[assignment]
-    _emit_import_error = exc
-else:
-    _emit_import_error = None
+import requests
+from dotenv import load_dotenv
 
-try:
-    from inter_api import baixar_boletos_pdf as _baixar_mod
-except Exception as exc:  # noqa: BLE001 - idem acima
-    _baixar_mod = None  # type: ignore[assignment]
-    _baixar_import_error = exc
-else:
-    _baixar_import_error = None
+BASE_DIR = Path(__file__).resolve().parents[2]
+CREDENTIALS_DIR = BASE_DIR / "config" / "inter"
+ENV_PATH = CREDENTIALS_DIR / ".env"
+
+load_dotenv(ENV_PATH)
+
+AUTH_URL = "https://cdpj.partners.bancointer.com.br/oauth/v2/token"
+COBRANCA_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas"
+PDF_URL_TEMPLATE = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas/{identificador}/pdf"
+
+
+def _tipo_pessoa(cpf_cnpj: str) -> str:
+    digitos = "".join(ch for ch in cpf_cnpj if ch.isdigit())
+    return "JURIDICA" if len(digitos) > 11 else "FISICA"
 
 
 class InterService:
-    def __init__(self):
-        # Variáveis de ambiente esperadas (.env)
+    def __init__(self) -> None:
         self.client_id = os.getenv("CLIENT_ID")
         self.client_secret = os.getenv("CLIENT_SECRET")
         self.conta_corrente = os.getenv("CONTA_CORRENTE")
-        self.cert_path = os.getenv("CERT_PATH")
-        self.key_path = os.getenv("KEY_PATH")
+        self.cert_path = os.getenv("CERT_PATH", str(CREDENTIALS_DIR / "Inter_API_Certificado.crt"))
+        self.key_path = os.getenv("KEY_PATH", str(CREDENTIALS_DIR / "Inter_API_Chave.key"))
 
-    def _credenciais_kwargs(self) -> Dict[str, Optional[str]]:
-        return {
+        if not all([self.client_id, self.client_secret, self.conta_corrente]):
+            raise RuntimeError("CLIENT_ID, CLIENT_SECRET e CONTA_CORRENTE precisam estar definidos no .env.")
+
+    def _obter_token(self, scope: str) -> str:
+        payload = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
-            "conta_corrente": self.conta_corrente,
-            "cert_path": self.cert_path,
-            "key_path": self.key_path,
+            "grant_type": "client_credentials",
+            "scope": scope,
         }
 
-    def _assert_emitir_disponivel(self) -> None:
-        if _emit_mod is None:
-            detalhe = f": {_emit_import_error}" if _emit_import_error else ""
-            raise RuntimeError(
-                "Módulo inter_api.emitir_boletos indisponível."
-                " Verifique dependências e certifique-se de que o arquivo está presente"
-                f"{detalhe}."
-            )
+        response = requests.post(
+            AUTH_URL,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data=payload,
+            cert=(self.cert_path, self.key_path),
+        )
+        response.raise_for_status()
+        token = response.json().get("access_token")
+        if not token:
+            raise RuntimeError("Não foi possível obter token de acesso do Banco Inter.")
+        return token
 
-    def _assert_baixar_disponivel(self) -> None:
-        if _baixar_mod is None:
-            detalhe = f": {_baixar_import_error}" if _baixar_import_error else ""
-            raise RuntimeError(
-                "Módulo inter_api.baixar_boletos_pdf indisponível."
-                " Verifique dependências e o arquivo correspondente"
-                f"{detalhe}."
-            )
+    def _formatar_pagador(self, dados: Dict[str, Any]) -> Dict[str, Any]:
+        cpf_cnpj = str(dados.get("cpfCnpj", ""))
+        return {
+            "cpfCnpj": cpf_cnpj,
+            "tipoPessoa": _tipo_pessoa(cpf_cnpj),
+            "nome": str(dados.get("nome", "")),
+            "endereco": str(dados.get("endereco", "")),
+            "bairro": str(dados.get("bairro", "")),
+            "cidade": str(dados.get("cidade", "")),
+            "uf": str(dados.get("uf", "")),
+            "cep": str(dados.get("cep", "")),
+            "email": str(dados.get("email", "")),
+            "ddd": str(dados.get("ddd", "")),
+            "telefone": str(dados.get("telefone", "")),
+            "numero": str(dados.get("numero", "")),
+            "complemento": str(dados.get("complemento", "")),
+        }
 
     def emitir_boleto(self, cliente_dict: Dict[str, Any], data_venc: dt.date) -> Dict[str, Any]:
-        """Emite boleto real via API do Banco Inter."""
-        self._assert_emitir_disponivel()
-
-        payload = dict(cliente_dict)
-        if "valorNominal" not in payload:
-            raise ValueError("'valorNominal' é obrigatório para emissão do boleto.")
+        if "valorNominal" not in cliente_dict:
+            raise ValueError("O cliente precisa possuir o campo 'valorNominal'.")
 
         try:
-            payload["valorNominal"] = float(payload["valorNominal"])
-        except Exception as exc:  # noqa: BLE001 - retornamos feedback claro
-            raise ValueError(f"Valor nominal inválido: {payload['valorNominal']}") from exc
+            valor_nominal = float(cliente_dict["valorNominal"])
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"Valor nominal inválido: {cliente_dict['valorNominal']}") from exc
 
-        for chave in ("cpfCnpj", "nome"):
-            if not payload.get(chave):
-                raise ValueError(f"'{chave}' é obrigatório para emissão do boleto.")
+        cpf_cnpj = str(cliente_dict.get("cpfCnpj", "")).strip()
+        if not cpf_cnpj:
+            raise ValueError("CPF/CNPJ é obrigatório para emissão do boleto.")
 
-        return _emit_mod.emitir_boleto(  # type: ignore[union-attr]
-            cliente=payload,
-            data_vencimento=data_venc,
-            **self._credenciais_kwargs(),
+        nome = str(cliente_dict.get("nome", "")).strip()
+        if not nome:
+            raise ValueError("Nome é obrigatório para emissão do boleto.")
+
+        competencia = data_venc.strftime("%Y%m")
+        numero_base = "".join(ch for ch in cpf_cnpj if ch.isdigit()) or "SN"
+        seu_numero = str(cliente_dict.get("seuNumero") or f"{numero_base}-{competencia}")[:20]
+
+        token = self._obter_token("boleto-cobranca.write")
+
+        body = {
+            "seuNumero": seu_numero,
+            "valorNominal": valor_nominal,
+            "dataVencimento": data_venc.strftime("%Y-%m-%d"),
+            "numDiasAgenda": 30,
+            "pagador": self._formatar_pagador(cliente_dict),
+            "multa": {
+                "codigo": cliente_dict.get("codigoMulta", "VALORFIXO"),
+                "valor": float(cliente_dict.get("valorMulta", 1.08)),
+            },
+            "mora": {
+                "codigo": cliente_dict.get("codigoMora", "TAXAMENSAL"),
+                "taxa": float(cliente_dict.get("taxaMora", 5)),
+            },
+            "mensagem": {
+                "linha1": str(cliente_dict.get("mensagem1", "Serviços contábeis.")),
+                "linha2": str(cliente_dict.get("mensagem2", "")),
+                "linha3": str(cliente_dict.get("mensagem3", "")),
+                "linha4": str(cliente_dict.get("mensagem4", "")),
+                "linha5": str(cliente_dict.get("mensagem5", "")),
+            },
+            "formasRecebimento": cliente_dict.get("formasRecebimento", ["BOLETO", "PIX"]),
+        }
+
+        response = requests.post(
+            COBRANCA_URL,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "x-conta-corrente": self.conta_corrente,
+                "Content-Type": "application/json",
+            },
+            cert=(self.cert_path, self.key_path),
+            json=body,
         )
+
+        if response.status_code != 201:
+            conteudo = response.text
+            raise RuntimeError(
+                f"Falha ao emitir boleto para {nome}. Status {response.status_code}. Resposta: {conteudo}"
+            )
+
+        retorno = response.json()
+        return {
+            "nossoNumero": retorno.get("nossoNumero", ""),
+            "linhaDigitavel": retorno.get("linhaDigitavel", ""),
+            "codigoBarras": retorno.get("codigoBarras", ""),
+            "txId": retorno.get("txId") or retorno.get("codigoSolicitacao", ""),
+            "codigoSolicitacao": retorno.get("codigoSolicitacao", ""),
+            "pdfBytes": retorno.get("pdfBytes"),
+        }
 
     def baixar_pdf(self, identificador: str, *, campo: str = "nosso_numero") -> Optional[bytes]:
         if not identificador:
             return None
-        self._assert_baixar_disponivel()
 
-        kwargs = self._credenciais_kwargs()
-        if campo == "codigo_solicitacao":
-            return _baixar_mod.baixar_pdf(  # type: ignore[union-attr]
-                codigo_solicitacao=identificador,
-                **kwargs,
-            )
-        return _baixar_mod.baixar_pdf(  # type: ignore[union-attr]
-            nosso_numero=identificador,
-            **kwargs,
+        token = self._obter_token("boleto-cobranca.read")
+        url = PDF_URL_TEMPLATE.format(identificador=identificador)
+
+        response = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "x-conta-corrente": self.conta_corrente,
+            },
+            cert=(self.cert_path, self.key_path),
+        )
+
+        if response.status_code == 200:
+            try:
+                data = response.json()
+            except ValueError:
+                return response.content or None
+            if "pdf" in data:
+                return base64.b64decode(data["pdf"]) if data["pdf"] else None
+            if "pdfBytes" in data:
+                return base64.b64decode(data["pdfBytes"]) if data["pdfBytes"] else None
+            return response.content or None
+
+        if response.status_code == 404:
+            return None
+
+        raise RuntimeError(
+            f"Falha ao baixar PDF ({response.status_code}): {response.text}"
         )
 
     def cancelar_boleto(self, nosso_numero: str) -> bool:
         # TODO: Evoluir para chamar a API oficial do Inter para baixa/cancelamento.
-        # Por ora, retornamos True apenas para marcar no sistema.
         return True

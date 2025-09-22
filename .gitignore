@@ -1,3 +1,6 @@
 /.env
 /Inter_API_Certificado.crt
 /Inter_API_Chave.key
+/config/inter/.env
+/config/inter/Inter_API_Certificado.crt
+/config/inter/Inter_API_Chave.key
