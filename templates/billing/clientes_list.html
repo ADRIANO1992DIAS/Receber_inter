@@ -1,31 +1,67 @@
-
 {% extends "base.html" %}
 {% block content %}
-  <h3>Clientes</h3>
-  <a href="{% url 'cliente_create' %}" role="button">+ Novo cliente</a>
-  <table>
-    <thead>
-      <tr>
-        <th>Nome</th><th>CPF/CNPJ</th><th>Valor</th><th>Venc.</th><th>E-mail</th><th>Cidade</th><th>Ações</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for c in clientes %}
-        <tr>
-          <td>{{ c.nome }}</td>
-          <td>{{ c.cpfCnpj }}</td>
-          <td>R$ {{ c.valorNominal }}</td>
-          <td>{{ c.dataVencimento }}</td>
-          <td>{{ c.email }}</td>
-          <td>{{ c.cidade }}/{{ c.uf }}</td>
-          <td>
-            <a href="{% url 'cliente_update' c.id %}" role="button" class="secondary">Editar</a>
-            <a href="{% url 'cliente_delete' c.id %}" role="button" class="contrast">Excluir</a>
-          </td>
-        </tr>
-      {% empty %}
-        <tr><td colspan="7">Nenhum cliente cadastrado.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="flex flex-col gap-6">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 class="text-xl font-semibold text-slate-900">Clientes</h2>
+        <p class="text-sm text-slate-500">Visualize, edite e mantenha a base de clientes sempre atualizada.</p>
+      </div>
+      <a
+        class="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        href="{% url 'cliente_create' %}"
+      >
+        + Novo cliente
+      </a>
+    </div>
+
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-3">Nome</th>
+            <th class="px-4 py-3">CPF/CNPJ</th>
+            <th class="px-4 py-3">Valor</th>
+            <th class="px-4 py-3">Venc.</th>
+            <th class="px-4 py-3">E-mail</th>
+            <th class="px-4 py-3">Cidade</th>
+            <th class="px-4 py-3">Ações</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 text-slate-700">
+          {% for c in clientes %}
+            <tr class="hover:bg-slate-50">
+              <td class="px-4 py-3 font-medium text-slate-900">{{ c.nome }}</td>
+              <td class="px-4 py-3">{{ c.cpfCnpj }}</td>
+              <td class="px-4 py-3 font-semibold text-slate-900">R$ {{ c.valorNominal }}</td>
+              <td class="px-4 py-3">{{ c.dataVencimento }}</td>
+              <td class="px-4 py-3">{{ c.email }}</td>
+              <td class="px-4 py-3">{{ c.cidade }}/{{ c.uf }}</td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap gap-2">
+                  <a
+                    class="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-700"
+                    href="{% url 'cliente_update' c.id %}"
+                  >
+                    Editar
+                  </a>
+                  <a
+                    class="inline-flex items-center justify-center rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50"
+                    href="{% url 'cliente_delete' c.id %}"
+                  >
+                    Excluir
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">
+                Nenhum cliente cadastrado.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 {% endblock %}

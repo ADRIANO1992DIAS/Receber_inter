@@ -1,35 +1,60 @@
-
 <!doctype html>
 <html lang="pt-br">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Contas a Receber & Boletos</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-    <style>
-      .container { max-width: 1100px; margin: 0 auto; padding: 1rem; }
-      .topbar { display:flex; gap: .5rem; align-items:center; justify-content: space-between; }
-      .muted { color: #666; font-size: .9rem; }
-      table td, table th { vertical-align: middle; }
-      .badge { padding:.2rem .5rem; border-radius:.5rem; background:#eee; }
-    </style>
+    <title>Contas a Receber &amp; Boletos</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: '#f4f8ff',
+                100: '#e9f1ff',
+                300: '#a5c8ff',
+                500: '#3b82f6',
+                600: '#2563eb',
+                700: '#1d4ed8'
+              }
+            }
+          }
+        }
+      };
+    </script>
   </head>
-  <body>
-    <div class="container">
-      <nav class="topbar">
-        <strong>💳 Contas a Receber</strong>
-        <div>
-          <a href="/clientes/">Clientes</a>
-          <a href="/gerar/">Gerar boletos</a>
-          <a href="/boletos/">Boletos</a>
-          <a href="/admin/" target="_blank">Admin</a>
-        </div>
-      </nav>
-      {% for message in messages %}
-        <article class="contrast">{{ message }}</article>
-      {% endfor %}
-      {% block content %}{% endblock %}
-      <p class="muted">Banco de dados: SQLite • Arquivos: docker volume • Interface simples (vamos evoluir com Tailwind)</p>
+  <body class="min-h-screen bg-slate-100 text-slate-800 antialiased">
+    <div class="mx-auto flex min-h-screen max-w-6xl flex-col px-6 pb-10 pt-8 lg:px-10">
+      <header class="rounded-3xl bg-white/70 p-6 shadow-sm ring-1 ring-slate-100 backdrop-blur">
+        <nav class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Painel Financeiro</p>
+            <h1 class="mt-1 text-2xl font-semibold text-slate-900">Contas a Receber</h1>
+          </div>
+          <div class="flex flex-wrap gap-2 text-sm font-medium text-slate-600">
+            <a class="rounded-full px-4 py-2 transition hover:bg-brand-50 hover:text-brand-700" href="/clientes/">Clientes</a>
+            <a class="rounded-full px-4 py-2 transition hover:bg-brand-50 hover:text-brand-700" href="/gerar/">Gerar boletos</a>
+            <a class="rounded-full px-4 py-2 transition hover:bg-brand-50 hover:text-brand-700" href="/boletos/">Boletos</a>
+            <a class="rounded-full px-4 py-2 transition hover:bg-brand-50 hover:text-brand-700" href="/admin/" target="_blank" rel="noreferrer">Admin</a>
+          </div>
+        </nav>
+      </header>
+
+      <main class="mt-8 flex-1 space-y-6">
+        {% for message in messages %}
+          <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 shadow-sm">
+            {{ message }}
+          </div>
+        {% endfor %}
+        <section class="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur">
+          {% block content %}{% endblock %}
+        </section>
+      </main>
+
+      <footer class="mt-10 text-center text-xs text-slate-400">
+        Banco de dados: SQLite · Arquivos: volume Docker · Layout impulsionado por Tailwind
+      </footer>
     </div>
   </body>
 </html>

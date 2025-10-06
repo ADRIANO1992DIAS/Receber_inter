@@ -1,36 +1,150 @@
 {% extends "base.html" %}
 {% block content %}
-  <h3>{{ titulo }}</h3>
-  <form method="post" novalidate>
-    {% csrf_token %}
-    {{ form.non_field_errors }}
-    <div class="grid">
-      <label>{{ form.nome.label }} {{ form.nome }}</label>
-      <label>{{ form.cpfCnpj.label }} {{ form.cpfCnpj }}</label>
+  <div class="space-y-6">
+    <div class="flex flex-col gap-2">
+      <h2 class="text-xl font-semibold text-slate-900">{{ titulo }}</h2>
+      <p class="text-sm text-slate-500">
+        Complete os dados cadastrais do cliente para facilitar a geração dos boletos.
+      </p>
     </div>
-    <div class="grid">
-      <label>{{ form.valorNominal.label }} {{ form.valorNominal }}</label>
-      <label>{{ form.dataVencimento.label }} {{ form.dataVencimento }}</label>
-    </div>
-    <div class="grid">
-      <label>{{ form.email.label }} {{ form.email }}</label>
-      <label>{{ form.telefone.label }} {{ form.telefone }}</label>
-    </div>
-    <div class="grid">
-      <label>{{ form.ddd.label }} {{ form.ddd }}</label>
-      <label>{{ form.cep.label }} {{ form.cep }}</label>
-    </div>
-    <label>{{ form.endereco.label }} {{ form.endereco }}</label>
-    <div class="grid">
-      <label>{{ form.numero.label }} {{ form.numero }}</label>
-      <label>{{ form.complemento.label }} {{ form.complemento }}</label>
-    </div>
-    <div class="grid">
-      <label>{{ form.bairro.label }} {{ form.bairro }}</label>
-      <label>{{ form.cidade.label }} {{ form.cidade }}</label>
-      <label>{{ form.uf.label }} {{ form.uf }}</label>
-    </div>
-    <button type="submit">Salvar</button>
-    <a href="{% url 'clientes_list' %}" role="button" class="secondary">Cancelar</a>
-  </form>
+
+    <form class="space-y-6" method="post" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
+          {{ form.non_field_errors|striptags }}
+        </div>
+      {% endif %}
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.nome.label }}</label>
+          {{ form.nome }}
+          {% if form.nome.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.nome.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.cpfCnpj.label }}</label>
+          {{ form.cpfCnpj }}
+          {% if form.cpfCnpj.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.cpfCnpj.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.valorNominal.label }}</label>
+          {{ form.valorNominal }}
+          {% if form.valorNominal.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.valorNominal.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.dataVencimento.label }}</label>
+          {{ form.dataVencimento }}
+          {% if form.dataVencimento.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.dataVencimento.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.email.label }}</label>
+          {{ form.email }}
+          {% if form.email.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.email.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.telefone.label }}</label>
+          {{ form.telefone }}
+          {% if form.telefone.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.telefone.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.ddd.label }}</label>
+          {{ form.ddd }}
+          {% if form.ddd.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.ddd.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.cep.label }}</label>
+          {{ form.cep }}
+          {% if form.cep.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.cep.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.uf.label }}</label>
+          {{ form.uf }}
+          {% if form.uf.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.uf.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600">{{ form.endereco.label }}</label>
+        {{ form.endereco }}
+        {% if form.endereco.errors %}
+          <p class="mt-1 text-xs font-medium text-rose-600">{{ form.endereco.errors|striptags }}</p>
+        {% endif %}
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.numero.label }}</label>
+          {{ form.numero }}
+          {% if form.numero.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.numero.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.complemento.label }}</label>
+          {{ form.complemento }}
+          {% if form.complemento.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.complemento.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.bairro.label }}</label>
+          {{ form.bairro }}
+          {% if form.bairro.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.bairro.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600">{{ form.cidade.label }}</label>
+        {{ form.cidade }}
+        {% if form.cidade.errors %}
+          <p class="mt-1 text-xs font-medium text-rose-600">{{ form.cidade.errors|striptags }}</p>
+        {% endif %}
+      </div>
+
+      <div class="flex flex-wrap gap-3">
+        <button
+          type="submit"
+          class="inline-flex items-center justify-center rounded-full bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          Salvar
+        </button>
+        <a
+          class="inline-flex items-center justify-center rounded-full border border-slate-200 px-6 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-700"
+          href="{% url 'clientes_list' %}"
+        >
+          Cancelar
+        </a>
+      </div>
+    </form>
+  </div>
 {% endblock %}

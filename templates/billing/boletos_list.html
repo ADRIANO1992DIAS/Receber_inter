@@ -1,56 +1,147 @@
-
 {% extends "base.html" %}
 {% block content %}
-  <h3>Boletos</h3>
-  <div class="toolbar">
-    <a href="{% url 'boleto_create' %}" role="button">+ Novo boleto</a>
-  </div>
-  <form method="post" action="{% url 'baixar_pdf_lote' %}">
-    {% csrf_token %}
-    <div class="toolbar">
-      <button type="submit" class="secondary">Baixar PDFs selecionados</button>
+  <div class="flex flex-col gap-6">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 class="text-xl font-semibold text-slate-900">Boletos</h2>
+        <p class="text-sm text-slate-500">Gestão centralizada dos boletos emitidos e seus status.</p>
+      </div>
+      <a
+        class="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        href="{% url 'boleto_create' %}"
+      >
+        + Novo boleto
+      </a>
     </div>
-    <table>
-    <thead>
-      <tr>
-        <th><input type="checkbox" id="selecionar-todos" title="Selecionar todos"></th>
-        <th>Cliente</th><th>Comp.</th><th>Vencimento</th><th>Valor</th><th>Status</th><th>Ações</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for b in boletos %}
-        <tr>
-          <td><input type="checkbox" name="boletos" value="{{ b.id }}" class="selecao-boleto"></td>
-          <td>{{ b.cliente.nome }}</td>
-          <td>{{ b.competencia_mes }}/{{ b.competencia_ano }}</td>
-          <td>{{ b.data_vencimento }}</td>
-          <td>R$ {{ b.valor }}</td>
-          <td><span class="badge">{{ b.status }}</span></td>
-          <td>
-            {% if b.pdf %}
-              <a href="{% url 'baixar_pdf' b.id %}" role="button">PDF</a>
-            {% else %}
-              <a href="{% url 'baixar_pdf' b.id %}" role="button" class="secondary">Baixar PDF</a>
-            {% endif %}
-            {% if b.status != "pago" %}
-              <a href="{% url 'marcar_pago' b.id %}" role="button" class="contrast">Marcar pago</a>
-            {% endif %}
-            {% if b.status != "cancelado" %}
-              <a href="{% url 'cancelar_boleto' b.id %}" role="button" class="secondary">Cancelar</a>
-            {% endif %}
-            <a href="{% url 'boleto_update' b.id %}" role="button" class="secondary">Editar</a>
-            <a href="{% url 'boleto_delete' b.id %}" role="button" class="contrast">Excluir</a>
-          </td>
-        </tr>
-      {% empty %}
-        <tr><td colspan="7">Nenhum boleto gerado.</td></tr>
-      {% endfor %}
-    </tbody>
-    </table>
-  </form>
+
+    <form class="space-y-4" method="post" action="{% url 'baixar_pdf_lote' %}">
+      {% csrf_token %}
+      <div class="flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          class="inline-flex items-center justify-center rounded-full border border-brand-200 bg-white px-5 py-2 text-sm font-semibold text-brand-700 shadow-sm transition hover:border-brand-300 hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          Baixar PDFs selecionados
+        </button>
+      </div>
+
+      <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th class="w-14 px-4 py-3">
+                <span class="sr-only">Selecionar todos</span>
+                <input
+                  id="selecionar-todos"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  title="Selecionar todos"
+                >
+              </th>
+              <th class="px-4 py-3">Cliente</th>
+              <th class="px-4 py-3">Comp.</th>
+              <th class="px-4 py-3">Vencimento</th>
+              <th class="px-4 py-3">Valor</th>
+              <th class="px-4 py-3">Status</th>
+              <th class="px-4 py-3">Ações</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 text-slate-700">
+            {% for b in boletos %}
+              <tr class="hover:bg-slate-50">
+                <td class="px-4 py-3">
+                  <input
+                    class="selecao-boleto h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    type="checkbox"
+                    name="boletos"
+                    value="{{ b.id }}"
+                    aria-label="Selecionar boleto de {{ b.cliente.nome }}"
+                  >
+                </td>
+                <td class="px-4 py-3 font-medium text-slate-900">{{ b.cliente.nome }}</td>
+                <td class="px-4 py-3">{{ b.competencia_mes }}/{{ b.competencia_ano }}</td>
+                <td class="px-4 py-3">{{ b.data_vencimento }}</td>
+                <td class="px-4 py-3 font-semibold text-slate-900">R$ {{ b.valor }}</td>
+                <td class="px-4 py-3">
+                  {% with status=b.status|lower %}
+                    {% if status == "pago" %}
+                      <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>{{ b.status }}
+                      </span>
+                    {% elif status == "cancelado" %}
+                      <span class="inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                        <span class="h-2 w-2 rounded-full bg-rose-500"></span>{{ b.status }}
+                      </span>
+                    {% else %}
+                      <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                        <span class="h-2 w-2 rounded-full bg-amber-500"></span>{{ b.status }}
+                      </span>
+                    {% endif %}
+                  {% endwith %}
+                </td>
+                <td class="px-4 py-3">
+                  <div class="flex flex-wrap gap-2">
+                    {% if b.pdf %}
+                      <a
+                        class="inline-flex items-center justify-center rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white transition hover:bg-slate-700"
+                        href="{% url 'baixar_pdf' b.id %}"
+                      >
+                        PDF
+                      </a>
+                    {% else %}
+                      <a
+                        class="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-700"
+                        href="{% url 'baixar_pdf' b.id %}"
+                      >
+                        Baixar PDF
+                      </a>
+                    {% endif %}
+                    {% if b.status != "pago" %}
+                      <a
+                        class="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300"
+                        href="{% url 'marcar_pago' b.id %}"
+                      >
+                        Marcar pago
+                      </a>
+                    {% endif %}
+                    {% if b.status != "cancelado" %}
+                      <a
+                        class="inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:border-rose-300"
+                        href="{% url 'cancelar_boleto' b.id %}"
+                      >
+                        Cancelar
+                      </a>
+                    {% endif %}
+                    <a
+                      class="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-700"
+                      href="{% url 'boleto_update' b.id %}"
+                    >
+                      Editar
+                    </a>
+                    <a
+                      class="inline-flex items-center justify-center rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50"
+                      href="{% url 'boleto_delete' b.id %}"
+                    >
+                      Excluir
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">
+                  Nenhum boleto gerado.
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </form>
+  </div>
 
   <script>
-    (function() {
+    (function () {
       const seletor = document.getElementById('selecionar-todos');
       if (!seletor) {
         return;

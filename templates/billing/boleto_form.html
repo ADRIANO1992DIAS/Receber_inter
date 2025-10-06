@@ -1,27 +1,145 @@
 {% extends "base.html" %}
 {% block content %}
-  <h3>{{ titulo }}</h3>
-  <form method="post" enctype="multipart/form-data" novalidate>
-    {% csrf_token %}
-    {{ form.non_field_errors }}
-    <label>{{ form.cliente.label }} {{ form.cliente }}</label>
-    <div class="grid">
-      <label>{{ form.competencia_ano.label }} {{ form.competencia_ano }}</label>
-      <label>{{ form.competencia_mes.label }} {{ form.competencia_mes }}</label>
+  <div class="space-y-6">
+    <div class="flex flex-col gap-2">
+      <h2 class="text-xl font-semibold text-slate-900">{{ titulo }}</h2>
+      <p class="text-sm text-slate-500">
+        Cadastre ou atualize as informações do boleto. Campos obrigatórios aparecem destacados.
+      </p>
     </div>
-    <div class="grid">
-      <label>{{ form.data_vencimento.label }} {{ form.data_vencimento }}</label>
-      <label>{{ form.valor.label }} {{ form.valor }}</label>
-    </div>
-    <label>{{ form.status.label }} {{ form.status }}</label>
-    <label>{{ form.nosso_numero.label }} {{ form.nosso_numero }}</label>
-    <label>{{ form.linha_digitavel.label }} {{ form.linha_digitavel }}</label>
-    <label>{{ form.codigo_barras.label }} {{ form.codigo_barras }}</label>
-    <label>{{ form.tx_id.label }} {{ form.tx_id }}</label>
-    <label>{{ form.codigo_solicitacao.label }} {{ form.codigo_solicitacao }}</label>
-    <label>{{ form.data_pagamento.label }} {{ form.data_pagamento }}</label>
-    <label>{{ form.pdf.label }} {{ form.pdf }}</label>
-    <button type="submit">Salvar</button>
-    <a href="{% url 'boletos_list' %}" role="button" class="secondary">Cancelar</a>
-  </form>
+
+    <form class="space-y-6" method="post" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
+          {{ form.non_field_errors|striptags }}
+        </div>
+      {% endif %}
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.cliente.label }}</label>
+          {{ form.cliente }}
+          {% if form.cliente.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.cliente.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.status.label }}</label>
+          {{ form.status }}
+          {% if form.status.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.status.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.competencia_ano.label }}</label>
+          {{ form.competencia_ano }}
+          {% if form.competencia_ano.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.competencia_ano.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.competencia_mes.label }}</label>
+          {{ form.competencia_mes }}
+          {% if form.competencia_mes.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.competencia_mes.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.data_vencimento.label }}</label>
+          {{ form.data_vencimento }}
+          {% if form.data_vencimento.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.data_vencimento.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.valor.label }}</label>
+          {{ form.valor }}
+          {% if form.valor.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.valor.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.nosso_numero.label }}</label>
+          {{ form.nosso_numero }}
+          {% if form.nosso_numero.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.nosso_numero.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.linha_digitavel.label }}</label>
+          {{ form.linha_digitavel }}
+          {% if form.linha_digitavel.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.linha_digitavel.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.codigo_barras.label }}</label>
+          {{ form.codigo_barras }}
+          {% if form.codigo_barras.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.codigo_barras.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.tx_id.label }}</label>
+          {{ form.tx_id }}
+          {% if form.tx_id.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.tx_id.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.codigo_solicitacao.label }}</label>
+          {{ form.codigo_solicitacao }}
+          {% if form.codigo_solicitacao.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.codigo_solicitacao.errors|striptags }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600">{{ form.data_pagamento.label }}</label>
+          {{ form.data_pagamento }}
+          {% if form.data_pagamento.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.data_pagamento.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600">{{ form.pdf.label }}</label>
+        {{ form.pdf }}
+        {% if form.pdf.errors %}
+          <p class="mt-1 text-xs font-medium text-rose-600">{{ form.pdf.errors|striptags }}</p>
+        {% endif %}
+      </div>
+
+      <div class="flex flex-wrap gap-3">
+        <button
+          type="submit"
+          class="inline-flex items-center justify-center rounded-full bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          Salvar
+        </button>
+        <a
+          class="inline-flex items-center justify-center rounded-full border border-slate-200 px-6 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-700"
+          href="{% url 'boletos_list' %}"
+        >
+          Cancelar
+        </a>
+      </div>
+    </form>
+  </div>
 {% endblock %}
