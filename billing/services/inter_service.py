@@ -57,11 +57,20 @@ class InterService:
         self.conta_corrente = os.getenv("CONTA_CORRENTE")
         self.cert_path = _resolve_cert_path(os.getenv("CERT_PATH"), "Inter_API_Certificado.crt")
         self.key_path = _resolve_cert_path(os.getenv("KEY_PATH"), "Inter_API_Chave.key")
+        self._token_cache: Dict[str, Dict[str, Any]] = {}
 
         if not all([self.client_id, self.client_secret, self.conta_corrente]):
             raise RuntimeError("CLIENT_ID, CLIENT_SECRET e CONTA_CORRENTE precisam estar definidos no .env.")
 
     def _obter_token(self, scope: str) -> str:
+        agora = dt.datetime.utcnow()
+        cache = self._token_cache.get(scope)
+        if cache:
+            expires_at = cache.get("expires_at")
+            token = cache.get("token")
+            if token and isinstance(expires_at, dt.datetime) and expires_at > agora:
+                return token
+
         payload = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
@@ -76,13 +85,25 @@ class InterService:
             cert=(self.cert_path, self.key_path),
         )
         response.raise_for_status()
-        token = response.json().get("access_token")
+        data = response.json()
+        token = data.get("access_token")
         if not token:
-            raise RuntimeError("Não foi possível obter token de acesso do Banco Inter.")
+            raise RuntimeError("Nao foi possivel obter token de acesso do Banco Inter.")
+        try:
+            expires_in = int(data.get("expires_in", 600))
+        except (TypeError, ValueError):
+            expires_in = 600
+        margem = 60 if expires_in > 120 else int(expires_in * 0.2)
+        expires_at = agora + dt.timedelta(seconds=max(30, expires_in - margem))
+        self._token_cache[scope] = {"token": token, "expires_at": expires_at}
         return token
 
     def _formatar_pagador(self, dados: Dict[str, Any]) -> Dict[str, Any]:
         cpf_cnpj = str(dados.get("cpfCnpj", ""))
+        ddd = "".join(ch for ch in str(dados.get("ddd", "")) if ch.isdigit())[:3]
+        telefone = "".join(ch for ch in str(dados.get("telefone", "")) if ch.isdigit())
+        if len(telefone) > 9:
+            telefone = telefone[-9:]
         return {
             "cpfCnpj": cpf_cnpj,
             "tipoPessoa": _tipo_pessoa(cpf_cnpj),
@@ -93,8 +114,8 @@ class InterService:
             "uf": str(dados.get("uf", "")),
             "cep": str(dados.get("cep", "")),
             "email": str(dados.get("email", "")),
-            "ddd": str(dados.get("ddd", "")),
-            "telefone": str(dados.get("telefone", "")),
+            "ddd": ddd,
+            "telefone": telefone,
             "numero": str(dados.get("numero", "")),
             "complemento": str(dados.get("complemento", "")),
         }

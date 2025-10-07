@@ -53,6 +53,7 @@ CLIENTE_IMPORT_HEADER_ALIASES: Dict[str, str] = {
     "datavencimento": "dataVencimento",
     "vencimento": "dataVencimento",
     "diavencimento": "dataVencimento",
+    "diadovencimento": "dataVencimento",
     "dia": "dataVencimento",
     "email": "email",
     "ddd": "ddd",
@@ -88,6 +89,10 @@ def _texto_limpo(valor) -> str:
     return str(valor).strip()
 
 
+def _apenas_digitos(valor: str) -> str:
+    return "".join(ch for ch in valor if ch.isdigit())
+
+
 def _parse_decimal(valor) -> Decimal:
     if valor is None or (isinstance(valor, str) and not valor.strip()):
         raise ValueError("Valor nominal ausente.")
@@ -110,7 +115,7 @@ def _parse_decimal(valor) -> Decimal:
 
 def _parse_dia_vencimento(valor) -> int:
     if valor is None or (isinstance(valor, str) and not valor.strip()):
-        raise ValueError("Dia do vencimento ausente.")
+        raise ValueError("Campo dataVencimento ausente.")
 
     if isinstance(valor, dt.date):
         dia = valor.day
@@ -119,11 +124,11 @@ def _parse_dia_vencimento(valor) -> int:
     else:
         texto = str(valor).strip()
         if not texto:
-            raise ValueError("Dia do vencimento vazio.")
+            raise ValueError("Campo dataVencimento vazio.")
         dia = int(float(texto.replace(",", ".")))
 
     if not 1 <= dia <= 31:
-        raise ValueError("Dia do vencimento deve estar entre 1 e 31.")
+        raise ValueError("Campo dataVencimento deve estar entre 1 e 31.")
     return dia
 
 
@@ -224,7 +229,7 @@ def cliente_import(request):
                                 nome = _texto_limpo(dados.get("nome"))
                                 if not nome:
                                     raise ValueError("Nome não informado.")
-                                cpf = _texto_limpo(dados.get("cpfCnpj"))
+                                cpf = _apenas_digitos(_texto_limpo(dados.get("cpfCnpj")))
                                 if not cpf:
                                     raise ValueError("CPF/CNPJ não informado.")
                                 valor_nominal = _parse_decimal(dados.get("valorNominal"))
@@ -302,7 +307,7 @@ def cliente_import_template(request):
             "Nome",
             "CPF/CNPJ",
             "Valor nominal",
-            "Dia do vencimento",
+            "dataVencimento",
             "E-mail",
             "DDD",
             "Telefone",

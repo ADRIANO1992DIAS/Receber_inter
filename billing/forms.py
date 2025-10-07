@@ -1,11 +1,27 @@
-
 from django import forms
 
 from .models import Cliente, Boleto
 
+
 class SelecionarClientesForm(forms.Form):
-    ano = forms.IntegerField(min_value=2000, max_value=2100, initial=2025, label="Ano")
-    mes = forms.IntegerField(min_value=1, max_value=12, initial=9, label="Mês")
+    ano = forms.IntegerField(
+        min_value=2000,
+        max_value=2100,
+        initial=2025,
+        label="Ano",
+        widget=forms.NumberInput(
+            attrs={"min": 2000, "max": 2100, "style": "appearance:auto;"}
+        ),
+    )
+    mes = forms.IntegerField(
+        min_value=1,
+        max_value=12,
+        initial=9,
+        label="Mes",
+        widget=forms.NumberInput(
+            attrs={"min": 1, "max": 12, "style": "appearance:auto;"}
+        ),
+    )
     clientes = forms.ModelMultipleChoiceField(
         queryset=Cliente.objects.all(),
         widget=forms.CheckboxSelectMultiple,
