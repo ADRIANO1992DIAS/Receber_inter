@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="space-y-6">
+    <div class="flex flex-col gap-2">
+      <h2 class="text-xl font-semibold text-slate-900">Importar planilha de clientes</h2>
+      <p class="text-sm text-slate-500">
+        Envie um arquivo Excel (.xlsx) com as colunas obrigatorias: Nome, CPF/CNPJ, Valor nominal e Dia do vencimento.
+        Colunas como E-mail, Telefone, Endereco, CEP e UF tambem sao importadas quando presentes.
+      </p>
+    </div>
+
+    <form class="space-y-5" method="post" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
+          {{ form.non_field_errors|striptags }}
+        </div>
+      {% endif %}
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600">{{ form.arquivo.label }}</label>
+        {{ form.arquivo }}
+        <p class="mt-1 text-xs text-slate-500">
+          A primeira linha da planilha deve conter os titulos (cabecalhos). Cada linha representa um cliente.
+        </p>
+        {% if form.arquivo.errors %}
+          <p class="mt-1 text-xs font-medium text-rose-600">{{ form.arquivo.errors|striptags }}</p>
+        {% endif %}
+      </div>
+
+      <div class="flex flex-wrap gap-3">
+        <button
+          type="submit"
+          class="inline-flex items-center justify-center rounded-full bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          Importar
+        </button>
+        <a
+          class="inline-flex items-center justify-center rounded-full border border-slate-200 px-6 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-700"
+          href="{% url 'clientes_list' %}"
+        >
+          Cancelar
+        </a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

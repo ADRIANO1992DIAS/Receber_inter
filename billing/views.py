@@ -2,9 +2,11 @@ import base64
 import calendar
 import datetime as dt
 import io
+import unicodedata
 import zipfile
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Dict
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -14,8 +16,11 @@ from django.contrib.auth.decorators import login_required
 from django.core.files.base import ContentFile
 from django.utils.text import slugify
 
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
+
 from .models import Cliente, Boleto
-from .forms import SelecionarClientesForm, ClienteForm, BoletoForm
+from .forms import SelecionarClientesForm, ClienteForm, BoletoForm, ClienteImportForm
 from .services.inter_service import InterService
 
 
@@ -33,6 +38,93 @@ MESES_CHOICES = [
     (11, "Novembro"),
     (12, "Dezembro"),
 ]
+
+CLIENTE_IMPORT_HEADER_ALIASES: Dict[str, str] = {
+    "nome": "nome",
+    "cliente": "nome",
+    "razaosocial": "nome",
+    "cpfcnpj": "cpfCnpj",
+    "cpf": "cpfCnpj",
+    "cnpj": "cpfCnpj",
+    "documento": "cpfCnpj",
+    "valornominal": "valorNominal",
+    "valor": "valorNominal",
+    "valorbruto": "valorNominal",
+    "datavencimento": "dataVencimento",
+    "vencimento": "dataVencimento",
+    "diavencimento": "dataVencimento",
+    "dia": "dataVencimento",
+    "email": "email",
+    "ddd": "ddd",
+    "telefone": "telefone",
+    "celular": "telefone",
+    "endereco": "endereco",
+    "logradouro": "endereco",
+    "numero": "numero",
+    "complemento": "complemento",
+    "bairro": "bairro",
+    "cidade": "cidade",
+    "municipio": "cidade",
+    "uf": "uf",
+    "estado": "uf",
+    "cep": "cep",
+}
+
+CLIENTE_IMPORT_REQUIRED = {"nome", "cpfCnpj", "valorNominal", "dataVencimento"}
+
+
+def _normalizar_header(valor: Optional[str]) -> str:
+    if valor is None:
+        return ""
+    texto = unicodedata.normalize("NFKD", str(valor).strip().lower())
+    return "".join(ch for ch in texto if ch.isalnum())
+
+
+def _texto_limpo(valor) -> str:
+    if valor is None:
+        return ""
+    if isinstance(valor, str):
+        return valor.strip()
+    return str(valor).strip()
+
+
+def _parse_decimal(valor) -> Decimal:
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        raise ValueError("Valor nominal ausente.")
+
+    if isinstance(valor, Decimal):
+        decimal_valor = valor
+    elif isinstance(valor, (int, float)):
+        decimal_valor = Decimal(str(valor))
+    else:
+        texto = str(valor)
+        texto = texto.replace("R$", "").replace(" ", "")
+        if "," in texto and "." in texto:
+            texto = texto.replace(".", "").replace(",", ".")
+        elif "," in texto:
+            texto = texto.replace(",", ".")
+        decimal_valor = Decimal(texto)
+
+    return decimal_valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _parse_dia_vencimento(valor) -> int:
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        raise ValueError("Dia do vencimento ausente.")
+
+    if isinstance(valor, dt.date):
+        dia = valor.day
+    elif isinstance(valor, (int, float, Decimal)):
+        dia = int(valor)
+    else:
+        texto = str(valor).strip()
+        if not texto:
+            raise ValueError("Dia do vencimento vazio.")
+        dia = int(float(texto.replace(",", ".")))
+
+    if not 1 <= dia <= 31:
+        raise ValueError("Dia do vencimento deve estar entre 1 e 31.")
+    return dia
 
 
 def _arquivo_pdf_nome(boleto: Boleto) -> str:
@@ -73,6 +165,131 @@ def home(request):
 def clientes_list(request):
     clientes = Cliente.objects.all().order_by("nome")
     return render(request, "billing/clientes_list.html", {"clientes": clientes})
+
+
+@login_required
+def cliente_import(request):
+    form = ClienteImportForm(request.POST or None, request.FILES or None)
+
+    if request.method == "POST" and form.is_valid():
+        arquivo = form.cleaned_data["arquivo"]
+        arquivo.seek(0)
+
+        try:
+            workbook = load_workbook(arquivo, data_only=True)
+        except InvalidFileException:
+            form.add_error("arquivo", "O arquivo deve estar em formato Excel (.xlsx).")
+        except Exception as exc:
+            form.add_error("arquivo", f"Não foi possível ler a planilha: {exc}")
+        else:
+            try:
+                sheet = workbook.active
+                header_row = next(sheet.iter_rows(max_row=1, values_only=True), None)
+                if not header_row:
+                    form.add_error("arquivo", "A planilha precisa ter uma linha de cabeçalho.")
+                else:
+                    header_map: Dict[str, int] = {}
+                    for idx, header in enumerate(header_row):
+                        campo = CLIENTE_IMPORT_HEADER_ALIASES.get(_normalizar_header(header))
+                        if campo and campo not in header_map:
+                            header_map[campo] = idx
+
+                    campos_faltando = [campo for campo in CLIENTE_IMPORT_REQUIRED if campo not in header_map]
+                    if campos_faltando:
+                        cabecalhos = ", ".join(sorted(campos_faltando))
+                        form.add_error("arquivo", f"Cabeçalhos obrigatórios ausentes: {cabecalhos}.")
+                    else:
+                        criados = atualizados = 0
+                        erros: List[str] = []
+
+                        for linha_idx, row in enumerate(
+                            sheet.iter_rows(min_row=2, values_only=True),
+                            start=2,
+                        ):
+                            if row is None:
+                                continue
+
+                            if all(
+                                cell is None or (isinstance(cell, str) and not cell.strip())
+                                for cell in row
+                            ):
+                                continue
+
+                            dados = {
+                                campo: (row[idx] if idx < len(row) else None)
+                                for campo, idx in header_map.items()
+                            }
+
+                            try:
+                                nome = _texto_limpo(dados.get("nome"))
+                                if not nome:
+                                    raise ValueError("Nome não informado.")
+                                cpf = _texto_limpo(dados.get("cpfCnpj"))
+                                if not cpf:
+                                    raise ValueError("CPF/CNPJ não informado.")
+                                valor_nominal = _parse_decimal(dados.get("valorNominal"))
+                                dia_venc = _parse_dia_vencimento(dados.get("dataVencimento"))
+                            except (ValueError, InvalidOperation) as exc:
+                                erros.append(f"Linha {linha_idx}: {exc}")
+                                continue
+
+                            defaults = {
+                                "nome": nome,
+                                "valorNominal": valor_nominal,
+                                "dataVencimento": dia_venc,
+                                "email": _texto_limpo(dados.get("email")),
+                                "ddd": _texto_limpo(dados.get("ddd")),
+                                "telefone": _texto_limpo(dados.get("telefone")),
+                                "endereco": _texto_limpo(dados.get("endereco")),
+                                "numero": _texto_limpo(dados.get("numero")),
+                                "complemento": _texto_limpo(dados.get("complemento")),
+                                "bairro": _texto_limpo(dados.get("bairro")),
+                                "cidade": _texto_limpo(dados.get("cidade")),
+                                "uf": _texto_limpo(dados.get("uf")).upper(),
+                                "cep": _texto_limpo(dados.get("cep")),
+                            }
+
+                            cliente, criado = Cliente.objects.update_or_create(
+                                cpfCnpj=cpf,
+                                defaults=defaults,
+                            )
+
+                            if criado:
+                                criados += 1
+                            else:
+                                atualizados += 1
+
+                        if criados or atualizados:
+                            mensagens = []
+                            if criados:
+                                mensagens.append(f"{criados} cliente(s) novo(s)")
+                            if atualizados:
+                                mensagens.append(f"{atualizados} cliente(s) atualizado(s)")
+                            resumo = ", ".join(mensagens)
+                            messages.success(
+                                request,
+                                f"Importação concluída com sucesso: {resumo}.",
+                            )
+                        else:
+                            messages.info(
+                                request,
+                                "Nenhum cliente foi criado ou atualizado. Verifique os dados da planilha.",
+                            )
+
+                        if erros:
+                            resumo_erros = "; ".join(erros[:5])
+                            if len(erros) > 5:
+                                resumo_erros += f"; ... (+{len(erros) - 5} linha(s) com erro)"
+                            messages.warning(
+                                request,
+                                f"Algumas linhas foram ignoradas: {resumo_erros}",
+                            )
+
+                        return redirect("clientes_list")
+            finally:
+                workbook.close()
+
+    return render(request, "billing/cliente_import.html", {"form": form})
 
 
 @login_required

@@ -6,12 +6,20 @@
         <h2 class="text-xl font-semibold text-slate-900">Clientes</h2>
         <p class="text-sm text-slate-500">Visualize, edite e mantenha a base de clientes sempre atualizada.</p>
       </div>
-      <a
-        class="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-        href="{% url 'cliente_create' %}"
-      >
-        + Novo cliente
-      </a>
+      <div class="flex flex-wrap gap-2">
+        <a
+          class="inline-flex items-center justify-center rounded-full border border-brand-200 px-5 py-2 text-sm font-semibold text-brand-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          href="{% url 'cliente_import' %}"
+        >
+          Importar planilha
+        </a>
+        <a
+          class="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          href="{% url 'cliente_create' %}"
+        >
+          + Novo cliente
+        </a>
+      </div>
     </div>
 
     <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

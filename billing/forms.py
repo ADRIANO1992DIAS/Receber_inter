@@ -63,3 +63,7 @@ class BoletoForm(forms.ModelForm):
             "data_pagamento": forms.DateInput(attrs={"type": "date"}),
             "valor": forms.NumberInput(attrs={"step": "0.01"}),
         }
+
+
+class ClienteImportForm(forms.Form):
+    arquivo = forms.FileField(label="Planilha Excel (.xlsx)")
