@@ -14,6 +14,62 @@
       </a>
     </div>
 
+    <form method="get" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div class="flex flex-col gap-4 md:flex-row md:items-end">
+        <div class="flex flex-1 flex-col gap-1 md:max-w-xs">
+          <label class="text-sm font-semibold text-slate-700" for="filtro-mes">Mes</label>
+          <select
+            id="filtro-mes"
+            name="mes"
+            class="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          >
+            {% for mes in meses %}
+              <option value="{{ mes.value }}"{% if mes.value == mes_selecionado %} selected{% endif %}>{{ mes.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="flex flex-1 flex-col gap-1 md:max-w-xs">
+          <label class="text-sm font-semibold text-slate-700" for="filtro-ano">Ano</label>
+          <select
+            id="filtro-ano"
+            name="ano"
+            class="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          >
+            <option value=""{% if not ano_selecionado %} selected{% endif %}>Todos</option>
+            {% for ano in anos %}
+              <option value="{{ ano }}"{% if ano == ano_selecionado %} selected{% endif %}>{{ ano }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="flex flex-1 flex-col gap-1 md:max-w-xs">
+          <label class="text-sm font-semibold text-slate-700" for="filtro-status">Status</label>
+          <select
+            id="filtro-status"
+            name="status"
+            class="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          >
+            {% for status in status_opcoes %}
+              <option value="{{ status.value }}"{% if status.value == status_selecionado %} selected{% endif %}>{{ status.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="flex flex-row gap-2">
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          >
+            Aplicar filtros
+          </button>
+          <a
+            href="{% url 'boletos_list' %}"
+            class="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-brand-300 hover:text-brand-700"
+          >
+            Limpar
+          </a>
+        </div>
+      </div>
+    </form>
+
     <form class="space-y-4" method="post" action="{% url 'baixar_pdf_lote' %}">
       {% csrf_token %}
       <div class="flex flex-wrap items-center gap-3">

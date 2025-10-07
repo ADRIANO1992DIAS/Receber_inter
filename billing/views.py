@@ -19,6 +19,22 @@ from .forms import SelecionarClientesForm, ClienteForm, BoletoForm
 from .services.inter_service import InterService
 
 
+MESES_CHOICES = [
+    (1, "Janeiro"),
+    (2, "Fevereiro"),
+    (3, "Marco"),
+    (4, "Abril"),
+    (5, "Maio"),
+    (6, "Junho"),
+    (7, "Julho"),
+    (8, "Agosto"),
+    (9, "Setembro"),
+    (10, "Outubro"),
+    (11, "Novembro"),
+    (12, "Dezembro"),
+]
+
+
 def _arquivo_pdf_nome(boleto: Boleto) -> str:
     competencia = f"{boleto.competencia_mes:02d}-{boleto.competencia_ano}"
     base = f"{boleto.cliente.nome}-{competencia}-{boleto.id}"
@@ -93,7 +109,63 @@ def cliente_delete(request, cliente_id: int):
 @login_required
 def boletos_list(request):
     boletos = Boleto.objects.select_related("cliente").order_by("-criado_em")
-    return render(request, "billing/boletos_list.html", {"boletos": boletos})
+
+    mes_param = request.GET.get("mes", "").strip()
+    ano_param = request.GET.get("ano", "").strip()
+    status_param = request.GET.get("status", "").strip()
+
+    mes_selecionado = ""
+    if mes_param:
+        try:
+            mes_valor = int(mes_param)
+        except ValueError:
+            mes_valor = None
+        if mes_valor and 1 <= mes_valor <= 12:
+            boletos = boletos.filter(competencia_mes=mes_valor)
+            mes_selecionado = str(mes_valor)
+
+    ano_selecionado = ""
+    if ano_param:
+        try:
+            ano_valor = int(ano_param)
+        except ValueError:
+            ano_valor = None
+        if ano_valor:
+            boletos = boletos.filter(competencia_ano=ano_valor)
+            ano_selecionado = str(ano_valor)
+
+    status_choices_map = dict(Boleto.STATUS_CHOICES)
+    status_opcoes = [
+        {"value": "", "label": "Todos"},
+    ] + [
+        {"value": value, "label": label} for value, label in Boleto.STATUS_CHOICES
+    ]
+
+    status_selecionado = ""
+    if status_param and status_param in status_choices_map:
+        boletos = boletos.filter(status=status_param)
+        status_selecionado = status_param
+
+    anos_disponiveis = list(
+        Boleto.objects.order_by("-competencia_ano")
+        .values_list("competencia_ano", flat=True)
+        .distinct()
+    )
+
+    meses_contexto = [{"value": "", "label": "Todos"}] + [
+        {"value": str(valor), "label": nome} for valor, nome in MESES_CHOICES
+    ]
+
+    context = {
+        "boletos": boletos,
+        "meses": meses_contexto,
+        "anos": [str(ano) for ano in anos_disponiveis],
+        "mes_selecionado": mes_selecionado,
+        "ano_selecionado": ano_selecionado,
+        "status_opcoes": status_opcoes,
+        "status_selecionado": status_selecionado,
+    }
+    return render(request, "billing/boletos_list.html", context)
 
 
 @login_required
