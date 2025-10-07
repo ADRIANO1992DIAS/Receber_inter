@@ -16,7 +16,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.files.base import ContentFile
 from django.utils.text import slugify
 
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
 from .models import Cliente, Boleto
@@ -290,6 +290,74 @@ def cliente_import(request):
                 workbook.close()
 
     return render(request, "billing/cliente_import.html", {"form": form})
+
+
+@login_required
+def cliente_import_template(request):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Clientes"
+    ws.append(
+        [
+            "Nome",
+            "CPF/CNPJ",
+            "Valor nominal",
+            "Dia do vencimento",
+            "E-mail",
+            "DDD",
+            "Telefone",
+            "Endereco",
+            "Numero",
+            "Complemento",
+            "Bairro",
+            "Cidade",
+            "UF",
+            "CEP",
+        ]
+    )
+    ws.append(
+        [
+            "Empresa Exemplo Ltda",
+            "12.345.678/0001-90",
+            199.9,
+            10,
+            "contato@exemplo.com",
+            "11",
+            "99999-1111",
+            "Rua das Flores",
+            "123",
+            "Sala 12",
+            "Centro",
+            "Sao Paulo",
+            "SP",
+            "01000-000",
+        ]
+    )
+    ws.append(
+        [
+            "Cliente Pessoa Física",
+            "123.456.789-00",
+            89.5,
+            25,
+            "cliente@email.com",
+            "21",
+            "98888-2222",
+            "Av. Atlantica",
+            "456",
+            "",
+            "Copacabana",
+            "Rio de Janeiro",
+            "RJ",
+            "22010-000",
+        ]
+    )
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = 'attachment; filename="clientes_modelo.xlsx"'
+    wb.save(response)
+    return response
 
 
 @login_required
