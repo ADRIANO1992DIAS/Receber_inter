@@ -491,11 +491,23 @@ def boleto_delete(request, boleto_id: int):
 
 @login_required
 def gerar_boletos(request):
-    form = SelecionarClientesForm(request.POST or None)
+    if request.method == "POST":
+        form = SelecionarClientesForm(request.POST)
+    else:
+        get_data = request.GET if request.GET else None
+        form = SelecionarClientesForm(get_data)
     if request.method == "POST" and form.is_valid():
         ano = form.cleaned_data["ano"]
         mes = form.cleaned_data["mes"]
-        clientes = form.cleaned_data["clientes"]
+        clientes_escolhidos = form.cleaned_data["clientes"]
+        if clientes_escolhidos:
+            clientes = list(clientes_escolhidos)
+        else:
+            clientes = list(form.filtered_clientes)
+
+        if not clientes:
+            messages.info(request, "Nenhum cliente disponivel para o filtro selecionado.")
+            return render(request, "billing/gerar_boletos.html", {"form": form})
         inter = InterService()
 
         with transaction.atomic():

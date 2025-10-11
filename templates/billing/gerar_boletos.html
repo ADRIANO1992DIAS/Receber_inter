@@ -25,6 +25,25 @@
             <p class="mt-1 text-xs font-medium text-rose-600">{{ form.mes.errors|striptags }}</p>
           {% endif %}
         </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-slate-600">{{ form.dia_vencimento.label }}</label>
+          <div class="mt-1 flex flex-wrap items-center gap-3">
+            {{ form.dia_vencimento }}
+            <button
+              type="submit"
+              formmethod="get"
+              class="rounded-full border border-brand-200 px-4 py-2 text-sm font-semibold text-brand-700 transition hover:border-brand-300 hover:bg-brand-50"
+            >
+              Filtrar
+            </button>
+          </div>
+          {% if form.dia_vencimento.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.dia_vencimento.errors|striptags }}</p>
+          {% endif %}
+          <p class="mt-1 text-xs text-slate-500">
+            Selecione um dia para listar apenas os clientes com esse vencimento.
+          </p>
+        </div>
       </div>
 
       <fieldset class="space-y-4 rounded-2xl border border-slate-200 bg-white/70 p-5">
@@ -32,17 +51,59 @@
           {{ form.clientes.label }}
         </legend>
         <p class="text-xs text-slate-500">
-          Se nenhum cliente for selecionado, todos serão considerados.
+          Se nenhum cliente for selecionado, todos serao considerados.
         </p>
-        <div class="grid gap-2 sm:grid-cols-2">
-          {{ form.clientes }}
-        </div>
+        {% if form.filtered_clientes %}
+          <div class="overflow-x-auto rounded-xl border border-slate-200">
+            <table class="min-w-full divide-y divide-slate-200 text-sm">
+              <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th scope="col" class="px-4 py-3 text-left font-semibold">Empresa</th>
+                  <th scope="col" class="px-4 py-3 text-left font-semibold">Valor</th>
+                  <th scope="col" class="px-4 py-3 text-left font-semibold">Vencimento</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 bg-white/60 text-slate-700">
+                {% for cliente in form.filtered_clientes %}
+                  {% with value=cliente.pk|stringformat:"s" %}
+                    <tr class="hover:bg-brand-50/40">
+                      <td class="px-4 py-3">
+                        <label class="flex cursor-pointer items-start gap-3">
+                          <input
+                            id="{{ form.clientes.auto_id }}_{{ forloop.counter0 }}"
+                            type="checkbox"
+                            name="{{ form.clientes.html_name }}"
+                            value="{{ cliente.pk }}"
+                            class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-2 focus:ring-brand-500"
+                            {% if value in form.selected_cliente_ids %}checked{% endif %}
+                          >
+                          <span>
+                            <span class="font-semibold">{{ cliente.nome }}</span>
+                            <span class="block text-xs text-slate-500">CNPJ: {{ cliente.cpfCnpj }}</span>
+                          </span>
+                        </label>
+                      </td>
+                      <td class="px-4 py-3 font-medium text-slate-900">
+                        R$ {{ cliente.valorNominal|floatformat:2 }}
+                      </td>
+                      <td class="px-4 py-3">
+                        Dia {{ cliente.dataVencimento|default:"-" }}
+                      </td>
+                    </tr>
+                  {% endwith %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="text-sm text-slate-500">Nenhum cliente encontrado para os filtros atuais.</p>
+        {% endif %}
         {% if form.clientes.errors %}
           <p class="text-xs font-medium text-rose-600">{{ form.clientes.errors|striptags }}</p>
         {% endif %}
       </fieldset>
 
-      <div>
+      <div class="flex flex-wrap gap-3">
         <button
           type="submit"
           class="inline-flex items-center justify-center rounded-full bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
