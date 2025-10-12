@@ -36,6 +36,7 @@ class Boleto(models.Model):
         ('pago', 'Pago'),
         ('cancelado', 'Cancelado'),
         ('erro', 'Erro'),
+        ('atrasado', 'Atrasado'),
     ]
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='boletos')
     competencia_ano = models.PositiveSmallIntegerField()

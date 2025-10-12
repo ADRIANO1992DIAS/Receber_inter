@@ -1,7 +1,17 @@
 from django import forms
 from django.db.models import QuerySet
+from django.utils import timezone
 
 from .models import Cliente, Boleto
+
+
+def _coerce_int_or_none(value):
+    if value in (None, "", "None"):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class SelecionarClientesForm(forms.Form):
@@ -23,8 +33,9 @@ class SelecionarClientesForm(forms.Form):
             attrs={"min": 1, "max": 12, "style": "appearance:auto;"}
         ),
     )
-    dia_vencimento = forms.ChoiceField(
+    dia = forms.TypedChoiceField(
         required=False,
+        coerce=_coerce_int_or_none,
         choices=[],
         label="Filtrar por dia do vencimento",
     )
@@ -37,6 +48,15 @@ class SelecionarClientesForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        if not self.is_bound:
+            hoje = timezone.localdate()
+            if hoje:
+                self.initial.setdefault("ano", hoje.year)
+                self.initial.setdefault("mes", hoje.month)
+            self.fields["ano"].initial = self.initial.get("ano", self.fields["ano"].initial)
+            self.fields["mes"].initial = self.initial.get("mes", self.fields["mes"].initial)
+
         clientes_qs = Cliente.objects.all()
 
         dias_disponiveis = (
@@ -46,23 +66,21 @@ class SelecionarClientesForm(forms.Form):
         )
         choices = [("", "Todos os vencimentos")]
         choices.extend((str(dia), f"Dia {dia:02d}") for dia in dias_disponiveis)
-        self.fields["dia_vencimento"].choices = choices
+        self.fields["dia"].choices = choices
 
-        dia_raw = None
-        if self.is_bound:
-            dia_raw = self.data.get(self.add_prefix("dia_vencimento"))
-        else:
-            dia_raw = self.initial.get("dia_vencimento")
-
-        dia_filtrado = None
-        if dia_raw not in (None, "", "None"):
-            try:
-                dia_filtrado = int(dia_raw)
-            except (TypeError, ValueError):
-                dia_filtrado = None
+        dia_raw = (
+            self.data.get(self.add_prefix("dia"))
+            if self.is_bound
+            else self.initial.get("dia")
+        )
+        dia_filtrado = _coerce_int_or_none(dia_raw)
 
         if dia_filtrado:
             clientes_qs = clientes_qs.filter(dataVencimento=dia_filtrado)
+            self.initial["dia"] = dia_filtrado
+            self.fields["dia"].initial = str(dia_filtrado)
+        elif not self.is_bound and "dia" not in self.initial:
+            self.fields["dia"].initial = ""
 
         self.filtered_clientes = clientes_qs.order_by("nome")
         self.fields["clientes"].queryset = self.filtered_clientes

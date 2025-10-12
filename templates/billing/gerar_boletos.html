@@ -26,9 +26,9 @@
           {% endif %}
         </div>
         <div class="md:col-span-2">
-          <label class="block text-sm font-medium text-slate-600">{{ form.dia_vencimento.label }}</label>
+          <label class="block text-sm font-medium text-slate-600">{{ form.dia.label }}</label>
           <div class="mt-1 flex flex-wrap items-center gap-3">
-            {{ form.dia_vencimento }}
+            {{ form.dia }}
             <button
               type="submit"
               formmethod="get"
@@ -37,8 +37,8 @@
               Filtrar
             </button>
           </div>
-          {% if form.dia_vencimento.errors %}
-            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.dia_vencimento.errors|striptags }}</p>
+          {% if form.dia.errors %}
+            <p class="mt-1 text-xs font-medium text-rose-600">{{ form.dia.errors|striptags }}</p>
           {% endif %}
           <p class="mt-1 text-xs text-slate-500">
             Selecione um dia para listar apenas os clientes com esse vencimento.

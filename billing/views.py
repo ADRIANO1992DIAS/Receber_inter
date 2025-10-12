@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 import calendar
 import datetime as dt
 import io
@@ -6,14 +6,18 @@ import unicodedata
 import zipfile
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Optional, List, Set, Dict
+from typing import Optional, List, Set, Dict, Any
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import FileResponse, HttpResponseNotFound, HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.db import transaction
+from django.db.models import Sum, Q
+from django.db.models.functions import Coalesce, ExtractDay
 from django.contrib.auth.decorators import login_required
 from django.core.files.base import ContentFile
+from django.views.decorators.http import require_POST
+from django.utils import timezone
 from django.utils.text import slugify
 
 from openpyxl import load_workbook, Workbook
@@ -161,6 +165,165 @@ def _buscar_pdf_bytes(inter: InterService, boleto: Boleto) -> Optional[bytes]:
     return None
 
 
+def _parse_inter_date(valor: Optional[str]) -> Optional[dt.date]:
+    if not valor:
+        return None
+    if isinstance(valor, dt.datetime):
+        return valor.date()
+    if isinstance(valor, dt.date):
+        return valor
+    texto = str(valor).strip()
+    if not texto:
+        return None
+    texto = texto.replace("Z", "")
+    try:
+        return dt.datetime.fromisoformat(texto).date()
+    except ValueError:
+        pass
+    if "T" in texto:
+        try:
+            return dt.datetime.fromisoformat(texto.split("T")[0]).date()
+        except ValueError:
+            pass
+    for formato in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return dt.datetime.strptime(texto, formato).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _interpretar_status_cobranca(payload: Dict[str, Any]) -> Dict[str, Optional[dt.date]]:
+    if not isinstance(payload, dict):
+        return {"status": None, "data_pagamento": None}
+
+    blocos: List[Dict[str, Any]] = [payload]
+    for chave in ("cobranca", "boleto", "pix", "detalhes", "dadosPagamento"):
+        valor = payload.get(chave)
+        if isinstance(valor, dict):
+            blocos.append(valor)
+
+    pagamentos_coletados: List[Dict[str, Any]] = []
+    for bloco in blocos:
+        tot_pag = bloco.get("pagamentos") or bloco.get("listaPagamentos")
+        if isinstance(tot_pag, list):
+            pagamentos_coletados.extend([p for p in tot_pag if isinstance(p, dict)])
+
+    status_candidatos: List[str] = []
+    for bloco in blocos:
+        for chave in (
+            "situacao",
+            "status",
+            "situacaoAtual",
+            "situacaoAtualCobranca",
+            "statusCobranca",
+            "situacaoBoleto",
+            "statusBoleto",
+        ):
+            valor = bloco.get(chave)
+            if valor:
+                status_candidatos.append(str(valor))
+
+    def _normalize(texto: str) -> str:
+        return (
+            unicodedata.normalize("NFKD", texto or "")
+            .encode("ASCII", "ignore")
+            .decode()
+            .upper()
+            .replace(" ", "")
+        )
+
+    novo_status: Optional[str] = None
+    status_atraso_tokens = {"ATRASADO", "ATRASADA", "VENCIDO", "VENCIDA", "VENCID", "EMATRASO"}
+    status_cancelamento_tokens = {"CANCEL", "BAIXA", "EXPIR", "DEVOL"}
+    status_pago_tokens = {"PAGO", "LIQUID", "BAIXADO", "RECEBIDO", "LIQUIDADO"}
+    status_aberto_tokens = {"EMABERTO", "ABERTO", "EMISSAO", "EMITIDO", "EMITIDA"}
+
+    for status_bruto in status_candidatos:
+        status_normalizado = _normalize(status_bruto)
+        if any(chave in status_normalizado for chave in status_pago_tokens):
+            novo_status = "pago"
+            break
+        if any(chave in status_normalizado for chave in status_cancelamento_tokens):
+            novo_status = "cancelado"
+            break
+        if any(chave in status_normalizado for chave in status_atraso_tokens):
+            novo_status = "atrasado"
+            continue
+        if not novo_status and status_normalizado:
+            if any(chave in status_normalizado for chave in status_aberto_tokens):
+                novo_status = "emitido"
+            else:
+                novo_status = "emitido"
+
+    def _valor_para_decimal(valor: Any) -> Optional[Decimal]:
+        if valor in (None, "", "None"):
+            return None
+        try:
+            return Decimal(str(valor)).quantize(Decimal("0.01"))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    valores_para_checar = []
+    for bloco in blocos:
+        valores_para_checar.extend(
+            bloco.get(chave)
+            for chave in ("valorPago", "valorRecebido", "valorLiquidado", "valorQuitado")
+            if chave in bloco
+        )
+    for pagamento in pagamentos_coletados:
+        valores_para_checar.extend(
+            pagamento.get(chave)
+            for chave in ("valorPago", "valor", "valorLiquidado")
+            if chave in pagamento
+        )
+
+    for valor_bruto in valores_para_checar:
+        valor_convertido = _valor_para_decimal(valor_bruto)
+        if valor_convertido and valor_convertido > Decimal("0"):
+            novo_status = "pago"
+            break
+
+    if not novo_status:
+        for pagamento in pagamentos_coletados:
+            situacao_pagamento = pagamento.get("situacao") or pagamento.get("status")
+            if situacao_pagamento:
+                situacao_normalizada = _normalize(str(situacao_pagamento))
+                if any(chave in situacao_normalizada for chave in status_pago_tokens):
+                    novo_status = "pago"
+                    break
+                if any(chave in situacao_normalizada for chave in status_cancelamento_tokens):
+                    novo_status = "cancelado"
+                    break
+                if any(chave in situacao_normalizada for chave in status_atraso_tokens):
+                    novo_status = "atrasado"
+                    break
+
+    data_pagamento_bruta: Optional[str] = None
+    for bloco in blocos:
+        data_pagamento_bruta = bloco.get("dataPagamento") or bloco.get("dataPagto") or bloco.get("dataPagamentoBoleto")
+        if data_pagamento_bruta:
+            break
+
+    if not data_pagamento_bruta and pagamentos_coletados:
+        for pagamento in pagamentos_coletados:
+            data_pagamento_bruta = (
+                pagamento.get("dataPagamento")
+                or pagamento.get("dataHoraPagamento")
+                or pagamento.get("dataHora")
+                or pagamento.get("data")
+            )
+            if data_pagamento_bruta:
+                break
+
+    data_pagamento = _parse_inter_date(data_pagamento_bruta)
+
+    return {
+        "status": novo_status,
+        "data_pagamento": data_pagamento,
+    }
+
+
 def home(request):
     # Agora a raiz (/) redireciona para a lista de clientes
     return redirect("clientes_list")
@@ -170,6 +333,248 @@ def home(request):
 def clientes_list(request):
     clientes = Cliente.objects.all().order_by("nome")
     return render(request, "billing/clientes_list.html", {"clientes": clientes})
+
+
+@login_required
+def dashboard(request):
+    boletos_qs = Boleto.objects.select_related("cliente").all()
+
+    mes_param = request.GET.get("mes", "").strip()
+    ano_param = request.GET.get("ano", "").strip()
+    dia_param = request.GET.get("dia", "").strip()
+
+    hoje = timezone.localdate()
+    if not mes_param and hoje:
+        mes_param = str(hoje.month)
+    if not ano_param and hoje:
+        ano_param = str(hoje.year)
+
+    mes_selecionado = ""
+    if mes_param:
+        try:
+            mes_valor = int(mes_param)
+        except ValueError:
+            mes_valor = None
+        if mes_valor and 1 <= mes_valor <= 12:
+            boletos_qs = boletos_qs.filter(competencia_mes=mes_valor)
+            mes_selecionado = str(mes_valor)
+
+    ano_selecionado = ""
+    if ano_param:
+        try:
+            ano_valor = int(ano_param)
+        except ValueError:
+            ano_valor = None
+        if ano_valor:
+            boletos_qs = boletos_qs.filter(competencia_ano=ano_valor)
+            ano_selecionado = str(ano_valor)
+
+    dia_selecionado = ""
+    if dia_param:
+        try:
+            dia_valor = int(dia_param)
+        except ValueError:
+            dia_valor = None
+        if dia_valor and 1 <= dia_valor <= 31:
+            boletos_qs = boletos_qs.filter(data_vencimento__day=dia_valor)
+            dia_selecionado = str(dia_valor)
+
+    total_gerados = boletos_qs.count()
+    total_recebidos = boletos_qs.filter(status="pago").count()
+    total_cancelados = boletos_qs.filter(status="cancelado").count()
+    total_valor_gerado = boletos_qs.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+    total_valor_recebido = boletos_qs.filter(status="pago").aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+    total_valor_cancelado = boletos_qs.filter(status="cancelado").aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+
+    hoje = hoje or timezone.localdate()
+    boletos_em_aberto = boletos_qs.filter(status__in=["emitido", "novo", "atrasado"])
+    boletos_atrasados = boletos_qs.filter(
+        Q(status="atrasado")
+        | (Q(status__in=["emitido", "novo"]) & Q(data_vencimento__lt=hoje))
+    )
+    total_em_atraso = boletos_atrasados.count()
+    valor_em_atraso = boletos_atrasados.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+
+    boletos_a_receber = boletos_qs.filter(
+        Q(status__in=["emitido", "novo"])
+        & (Q(data_vencimento__gte=hoje) | Q(data_vencimento__isnull=True))
+    )
+    total_a_receber = boletos_a_receber.count()
+    valor_a_receber = boletos_a_receber.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+
+    anos_disponiveis = list(
+        Boleto.objects.order_by("-competencia_ano")
+        .values_list("competencia_ano", flat=True)
+        .distinct()
+    )
+    if hoje and hoje.year not in anos_disponiveis:
+        anos_disponiveis.append(hoje.year)
+    anos_disponiveis = sorted({int(ano) for ano in anos_disponiveis}, reverse=True)
+
+    dias_disponiveis = (
+        Boleto.objects.annotate(dia=ExtractDay("data_vencimento"))
+        .values_list("dia", flat=True)
+        .order_by("dia")
+        .distinct()
+    )
+
+    meses_contexto = [{"value": "", "label": "Todos"}] + [
+        {"value": str(valor), "label": nome} for valor, nome in MESES_CHOICES
+    ]
+
+    dias_contexto = [{"value": "", "label": "Todos"}] + [
+        {"value": str(dia), "label": f"Dia {int(dia):02d}"}
+        for dia in dias_disponiveis
+        if dia is not None
+    ]
+
+    ultimos_boletos = (
+        boletos_qs.order_by("-criado_em")[:5]
+        if total_gerados
+        else []
+    )
+
+    context = {
+        "total_gerados": total_gerados,
+        "total_recebidos": total_recebidos,
+        "total_cancelados": total_cancelados,
+        "valor_gerado": total_valor_gerado,
+        "valor_recebido": total_valor_recebido,
+        "valor_cancelado": total_valor_cancelado,
+        "total_em_atraso": total_em_atraso,
+        "valor_em_atraso": valor_em_atraso,
+        "total_a_receber": total_a_receber,
+        "valor_a_receber": valor_a_receber,
+        "meses": meses_contexto,
+        "anos": [str(ano) for ano in anos_disponiveis],
+        "dias": dias_contexto,
+        "mes_selecionado": mes_selecionado,
+        "ano_selecionado": ano_selecionado,
+        "dia_selecionado": dia_selecionado,
+        "ultimos_boletos": ultimos_boletos,
+    }
+    return render(request, "billing/dashboard.html", context)
+
+
+@login_required
+@require_POST
+def sincronizar_boletos(request):
+    boletos = list(
+        Boleto.objects.filter(status__in=["emitido", "novo", "erro", "atrasado"]).select_related("cliente")
+    )
+    if not boletos:
+        messages.info(request, "Nenhum boleto pendente para sincronizar.")
+        return redirect("boletos_list")
+
+    try:
+        inter = InterService()
+    except Exception as exc:  # noqa: BLE001
+        messages.error(request, f"Falha ao inicializar integracao com o Banco Inter: {exc}")
+        return redirect("boletos_list")
+
+    atualizados = 0
+    contagem: Dict[str, int] = {"pago": 0, "cancelado": 0, "emitido": 0, "atrasado": 0}
+    sem_detalhe = 0
+    erros: List[str] = []
+
+    for boleto in boletos:
+        detalhe: Optional[Dict[str, Any]] = None
+        for ident, campo in [
+            (boleto.nosso_numero, "nosso_numero"),
+            (boleto.codigo_solicitacao, "codigo_solicitacao"),
+            (boleto.tx_id, "tx_id"),
+        ]:
+            if not ident:
+                continue
+            try:
+                detalhe = inter.recuperar_cobranca_detalhada(ident, campo=campo)
+            except Exception as exc:  # noqa: BLE001
+                erros.append(f"Boleto {boleto.id} - {boleto.cliente.nome}: {exc}")
+                detalhe = None
+                break
+            if detalhe:
+                break
+
+        if not detalhe:
+            sem_detalhe += 1
+            continue
+
+        resultado = _interpretar_status_cobranca(detalhe)
+        novo_status = resultado.get("status")
+        data_pagamento = resultado.get("data_pagamento")
+
+        if not novo_status:
+            continue
+
+        update_fields: Set[str] = set()
+
+        if detalhe.get("nossoNumero") and detalhe["nossoNumero"] != boleto.nosso_numero:
+            boleto.nosso_numero = detalhe["nossoNumero"]
+            update_fields.add("nosso_numero")
+
+        if detalhe.get("codigoSolicitacao") and detalhe["codigoSolicitacao"] != boleto.codigo_solicitacao:
+            boleto.codigo_solicitacao = detalhe["codigoSolicitacao"]
+            update_fields.add("codigo_solicitacao")
+
+        if detalhe.get("linhaDigitavel") and detalhe["linhaDigitavel"] != boleto.linha_digitavel:
+            boleto.linha_digitavel = detalhe["linhaDigitavel"]
+            update_fields.add("linha_digitavel")
+
+        if detalhe.get("valorNominal"):
+            try:
+                valor_remote = Decimal(str(detalhe["valorNominal"]))
+            except (InvalidOperation, TypeError, ValueError):
+                valor_remote = None
+            else:
+                if valor_remote is not None and boleto.valor != valor_remote:
+                    boleto.valor = valor_remote
+                    update_fields.add("valor")
+
+        if novo_status == "pago":
+            if data_pagamento and boleto.data_pagamento != data_pagamento:
+                boleto.data_pagamento = data_pagamento
+                update_fields.add("data_pagamento")
+        else:
+            if boleto.data_pagamento:
+                boleto.data_pagamento = None
+                update_fields.add("data_pagamento")
+
+        if boleto.status != novo_status:
+            boleto.status = novo_status
+            update_fields.add("status")
+            contagem[novo_status] = contagem.get(novo_status, 0) + 1
+
+        if update_fields:
+            boleto.save(update_fields=list(update_fields))
+            atualizados += 1
+
+    if atualizados:
+        resumo_itens = []
+        if contagem.get("pago"):
+            resumo_itens.append(f"recebidos: {contagem['pago']}")
+        if contagem.get("cancelado"):
+            resumo_itens.append(f"cancelados: {contagem['cancelado']}")
+        if contagem.get("atrasado"):
+            resumo_itens.append(f"atrasados: {contagem['atrasado']}")
+        if contagem.get("emitido"):
+            resumo_itens.append(f"em aberto: {contagem['emitido']}")
+        resumo = ", ".join(resumo_itens)
+        mensagem = f"Sincronizacao concluida. {atualizados} boleto(s) atualizado(s)."
+        if resumo:
+            mensagem += f" ({resumo})"
+        messages.success(request, mensagem)
+    else:
+        messages.info(request, "Sincronizacao concluida. Nenhum boleto precisava de atualizacao.")
+
+    if sem_detalhe:
+        messages.info(request, f"{sem_detalhe} boleto(s) nao foram encontrados ou ainda nao estao disponiveis na API.")
+    if erros:
+        mensagens = "; ".join(erros[:3])
+        if len(erros) > 3:
+            mensagens += f"; ... (+{len(erros) - 3} erro(s))"
+        messages.warning(request, f"Algumas consultas falharam: {mensagens}")
+
+    return redirect("boletos_list")
 
 
 @login_required
@@ -403,6 +808,7 @@ def boletos_list(request):
     mes_param = request.GET.get("mes", "").strip()
     ano_param = request.GET.get("ano", "").strip()
     status_param = request.GET.get("status", "").strip()
+    dia_param = request.GET.get("dia", "").strip()
 
     mes_selecionado = ""
     if mes_param:
@@ -436,9 +842,26 @@ def boletos_list(request):
         boletos = boletos.filter(status=status_param)
         status_selecionado = status_param
 
+    dia_selecionado = ""
+    if dia_param:
+        try:
+            dia_valor = int(dia_param)
+        except ValueError:
+            dia_valor = None
+        if dia_valor and 1 <= dia_valor <= 31:
+            boletos = boletos.filter(data_vencimento__day=dia_valor)
+            dia_selecionado = str(dia_valor)
+
     anos_disponiveis = list(
         Boleto.objects.order_by("-competencia_ano")
         .values_list("competencia_ano", flat=True)
+        .distinct()
+    )
+
+    dias_disponiveis = (
+        Boleto.objects.annotate(dia=ExtractDay("data_vencimento"))
+        .values_list("dia", flat=True)
+        .order_by("dia")
         .distinct()
     )
 
@@ -446,12 +869,20 @@ def boletos_list(request):
         {"value": str(valor), "label": nome} for valor, nome in MESES_CHOICES
     ]
 
+    dias_contexto = [{"value": "", "label": "Todos"}] + [
+        {"value": str(dia), "label": f"Dia {int(dia):02d}"}
+        for dia in dias_disponiveis
+        if dia is not None
+    ]
+
     context = {
         "boletos": boletos,
         "meses": meses_contexto,
         "anos": [str(ano) for ano in anos_disponiveis],
+        "dias": dias_contexto,
         "mes_selecionado": mes_selecionado,
         "ano_selecionado": ano_selecionado,
+        "dia_selecionado": dia_selecionado,
         "status_opcoes": status_opcoes,
         "status_selecionado": status_selecionado,
     }
@@ -555,32 +986,13 @@ def gerar_boletos(request):
                     boleto.status = "emitido"
                     boleto.save()
 
-                    # tenta baixar PDF logo apÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â³s emitir
-                    identificadores = [
-                        (boleto.nosso_numero, "nosso_numero"),
-                        (boleto.codigo_solicitacao, "codigo_solicitacao"),
-                    ]
-                    pdf_bytes = None
-                    for ident, campo in identificadores:
-                        if not ident:
-                            continue
-                        pdf_bytes = inter.baixar_pdf(ident, campo=campo)
-                        if pdf_bytes:
-                            break
-                    if pdf_bytes:
-                        if isinstance(pdf_bytes, str):
-                            pdf_bytes = base64.b64decode(pdf_bytes)
-                        from django.core.files.base import ContentFile
-                        boleto.pdf.save(f"boleto_{boleto.id}.pdf", ContentFile(pdf_bytes))
-                        boleto.save()
-
                 except Exception as e:
                     boleto.status = "erro"
                     boleto.erro_msg = str(e)
                     boleto.save()
                     messages.error(request, f"Erro ao emitir boleto de {cli.nome}: {e}")
 
-            messages.success(request, "Processo de emissÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o finalizado.")
+            messages.success(request, "Processo de emissao finalizado.")
         return redirect("boletos_list")
 
     return render(request, "billing/gerar_boletos.html", {"form": form})
@@ -591,7 +1003,11 @@ def baixar_pdf_view(request, boleto_id: int):
     inter = InterService()
     pdf_bytes = _buscar_pdf_bytes(inter, boleto)
     if not pdf_bytes:
-        return HttpResponseNotFound("PDF nao disponivel.")
+        messages.info(
+            request,
+            "PDF ainda nao disponivel na API do Banco Inter. Tente novamente em alguns instantes.",
+        )
+        return redirect("boletos_list")
 
     if not boleto.pdf:
         filename = _arquivo_pdf_nome(boleto)
@@ -701,3 +1117,4 @@ def cancelar_boleto(request, boleto_id: int):
         else:
             messages.success(request, "CobranÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§a cancelada com sucesso no Inter.")
     return redirect("boletos_list")
+

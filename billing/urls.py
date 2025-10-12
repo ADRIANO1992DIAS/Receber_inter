@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("dashboard/", views.dashboard, name="dashboard"),
     path("clientes/", views.clientes_list, name="clientes_list"),
     path("clientes/importar/", views.cliente_import, name="cliente_import"),
     path("clientes/importar/modelo/", views.cliente_import_template, name="cliente_import_template"),
@@ -15,6 +16,7 @@ urlpatterns = [
     path("boletos/<int:boleto_id>/editar/", views.boleto_update, name="boleto_update"),
     path("boletos/<int:boleto_id>/excluir/", views.boleto_delete, name="boleto_delete"),
     path("gerar/", views.gerar_boletos, name="gerar_boletos"),
+    path("boletos/sincronizar/", views.sincronizar_boletos, name="sincronizar_boletos"),
     path("boletos/<int:boleto_id>/pdf/", views.baixar_pdf_view, name="baixar_pdf"),
     path("boletos/pdfs/", views.baixar_pdf_lote, name="baixar_pdf_lote"),
     path("boletos/<int:boleto_id>/pagar/", views.marcar_pago, name="marcar_pago"),

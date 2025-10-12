@@ -19,6 +19,7 @@ COBRANCA_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas"
 COBRANCA_CANCELAR_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas/{codigo_solicitacao}/cancelar"
 CANCELAR_BOLETO_V2_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v2/boletos/{nosso_numero}/cancelar"
 PDF_URL_TEMPLATE = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas/{identificador}/pdf"
+DETALHE_COBRANCA_URL = "https://cdpj.partners.bancointer.com.br/cobranca/v3/cobrancas/{identificador}"
 
 
 def _tipo_pessoa(cpf_cnpj: str) -> str:
@@ -230,6 +231,45 @@ class InterService:
 
         raise RuntimeError(
             f"Falha ao baixar PDF ({response.status_code}): {response.text}"
+        )
+
+    def recuperar_cobranca_detalhada(self, identificador: str, *, campo: str = "nosso_numero") -> Optional[Dict[str, Any]]:
+        if not identificador:
+            return None
+
+        token = self._obter_token("boleto-cobranca.read")
+        url = DETALHE_COBRANCA_URL.format(identificador=identificador)
+        tipo_map = {
+            "nosso_numero": "NOSSONUMERO",
+            "codigo_solicitacao": "CODIGOSOLICITACAO",
+            "tx_id": "TXID",
+        }
+        params = {}
+        tipo = tipo_map.get(campo)
+        if tipo:
+            params["tipo"] = tipo
+
+        response = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "x-conta-corrente": self.conta_corrente,
+            },
+            params=params,
+            cert=(self.cert_path, self.key_path),
+        )
+
+        if response.status_code == 200:
+            try:
+                return response.json()
+            except ValueError:
+                return None
+
+        if response.status_code == 404:
+            return None
+
+        raise RuntimeError(
+            f"Falha ao recuperar cobranca ({response.status_code}): {response.text}"
         )
 
     def cancelar_boleto(

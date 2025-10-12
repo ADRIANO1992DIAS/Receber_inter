@@ -1,0 +1,207 @@
+﻿{% load humanize %}
+{% extends "base.html" %}
+{% block content %}
+  <div class="space-y-8">
+    <div class="flex flex-col gap-2">
+      <h2 class="text-2xl font-semibold text-slate-900">Dashboard financeiro</h2>
+      <p class="text-sm text-slate-500">
+        Acompanhe rapidamente os boletos gerados, recebidos e cancelados. Use os filtros para focar em um período específico.
+      </p>
+    </div>
+
+    <form method="get" class="rounded-3xl border border-slate-200 bg-white/70 p-5 shadow-sm">
+      <div class="grid gap-4 md:grid-cols-3">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-dashboard-mes">Mês</label>
+          <select
+            id="filtro-dashboard-mes"
+            name="mes"
+            class="rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          >
+            {% for mes in meses %}
+              <option value="{{ mes.value }}"{% if mes.value == mes_selecionado %} selected{% endif %}>{{ mes.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-dashboard-ano">Ano</label>
+          <select
+            id="filtro-dashboard-ano"
+            name="ano"
+            class="rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          >
+            <option value="">{% if not ano_selecionado %}Todos{% else %}Todos{% endif %}</option>
+            {% for ano in anos %}
+              <option value="{{ ano }}"{% if ano == ano_selecionado %} selected{% endif %}>{{ ano }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-dashboard-dia">Dia</label>
+          <select
+            id="filtro-dashboard-dia"
+            name="dia"
+            class="rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          >
+            {% for dia in dias %}
+              <option value="{{ dia.value }}"{% if dia.value == dia_selecionado %} selected{% endif %}>{{ dia.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-3">
+        <button
+          type="submit"
+          class="inline-flex items-center justify-center rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          Aplicar filtros
+        </button>
+        <a
+          href="{% url 'dashboard' %}"
+          class="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-brand-300 hover:text-brand-700"
+        >
+          Limpar
+        </a>
+      </div>
+    </form>
+
+    <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div class="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-brand-50 via-white to-white p-6 shadow-sm">
+        <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-brand-100/60"></div>
+        <div class="relative flex items-center gap-4">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600/90 text-white shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7l8.89 5.26a2 2 0 002.11 0L23 7M5 19h14a2 2 0 002-2V7a2 2 0 00-1-1.73l-8-4.44a2 2 0 00-2 0l-8 4.44A2 2 0 003 7v10a2 2 0 002 2z" />
+            </svg>
+          </span>
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos gerados</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_gerado|floatformat:2 }}</p>
+            <p class="text-xs font-medium text-slate-500">{{ total_gerados|intcomma }} boleto(s)</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-emerald-50 via-white to-white p-6 shadow-sm">
+        <div class="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-emerald-100/60"></div>
+        <div class="relative flex items-center gap-4">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos recebidos</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_recebido|floatformat:2 }}</p>
+            <p class="text-xs font-medium text-slate-500">{{ total_recebidos|intcomma }} boleto(s)</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-rose-50 via-white to-white p-6 shadow-sm">
+        <div class="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-rose-100/60"></div>
+        <div class="relative flex items-center gap-4">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-500 text-white shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v4m0 4h.01M4.93 4.93l14.14 14.14M21 21L3 3" />
+            </svg>
+          </span>
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos cancelados</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_cancelado|floatformat:2 }}</p>
+            <p class="text-xs font-medium text-slate-500">{{ total_cancelados|intcomma }} boleto(s)</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-amber-50 via-white to-white p-6 shadow-sm">
+        <div class="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-amber-100/60"></div>
+        <div class="relative flex items-center gap-4">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-9.33-4.987" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17H4l1.405-1.405A2.032 2.032 0 006 14.158V11c0-1.657 1.343-3 3-3s3 1.343 3 3v3.159c0 .538.214 1.055.595 1.436L15 17" />
+            </svg>
+          </span>
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos em atraso</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_em_atraso|floatformat:2 }}</p>
+            <p class="text-xs font-medium text-slate-500">{{ total_em_atraso|intcomma }} boleto(s)</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-white p-6 shadow-sm">
+        <div class="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-indigo-100/60"></div>
+        <div class="relative flex items-center gap-4">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-500 text-white shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 1.343-3 3v1a3 3 0 006 0v-1c0-1.657-1.343-3-3-3z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 20h12a2 2 0 002-2v-4a6 6 0 10-12 0v4a2 2 0 002 2z" />
+            </svg>
+          </span>
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos a receber</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_a_receber|floatformat:2 }}</p>
+            <p class="text-xs font-medium text-slate-500">{{ total_a_receber|intcomma }} boleto(s)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-sm">
+      <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 class="text-lg font-semibold text-slate-900">Últimos boletos do período</h3>
+          <p class="text-xs text-slate-500">Visão rápida dos boletos mais recentes considerando os filtros acima.</p>
+        </div>
+      </div>
+
+      {% if ultimos_boletos %}
+        <div class="mt-4 overflow-x-auto">
+          <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th scope="col" class="px-4 py-3 text-left font-semibold">Cliente</th>
+                <th scope="col" class="px-4 py-3 text-left font-semibold">Competência</th>
+                <th scope="col" class="px-4 py-3 text-left font-semibold">Vencimento</th>
+                <th scope="col" class="px-4 py-3 text-left font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 bg-white text-slate-700">
+              {% for boleto in ultimos_boletos %}
+                <tr class="hover:bg-slate-50/70">
+                  <td class="px-4 py-3 font-medium text-slate-900">
+                    {{ boleto.cliente.nome }}
+                  </td>
+                  <td class="px-4 py-3">
+                    {{ boleto.competencia_mes }}/{{ boleto.competencia_ano }}
+                  </td>
+                  <td class="px-4 py-3">{{ boleto.data_vencimento|date:"d/m/Y" }}</td>
+                  <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold
+                      {% if boleto.status == 'pago' %}
+                        border-emerald-200 bg-emerald-50 text-emerald-700
+                      {% elif boleto.status == 'cancelado' %}
+                        border-rose-200 bg-rose-50 text-rose-700
+                      {% elif boleto.status == 'erro' %}
+                        border-amber-200 bg-amber-50 text-amber-700
+                      {% else %}
+                        border-slate-200 bg-slate-50 text-slate-600
+                      {% endif %}
+                    ">
+                      {{ boleto.get_status_display }}
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mt-6 text-sm text-slate-500">Nenhum boleto encontrado para os filtros selecionados.</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
+
