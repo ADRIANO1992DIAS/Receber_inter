@@ -1,5 +1,5 @@
-﻿{% load humanize %}
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
+{% load humanize formatters %}
 {% block content %}
   <div class="space-y-8">
     <div class="flex flex-col gap-2">
@@ -76,7 +76,7 @@
           </span>
           <div>
             <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos gerados</p>
-            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_gerado|floatformat:2 }}</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_gerado|currency_br }}</p>
             <p class="text-xs font-medium text-slate-500">{{ total_gerados|intcomma }} boleto(s)</p>
           </div>
         </div>
@@ -92,7 +92,7 @@
           </span>
           <div>
             <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos recebidos</p>
-            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_recebido|floatformat:2 }}</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_recebido|currency_br }}</p>
             <p class="text-xs font-medium text-slate-500">{{ total_recebidos|intcomma }} boleto(s)</p>
           </div>
         </div>
@@ -108,7 +108,7 @@
           </span>
           <div>
             <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos cancelados</p>
-            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_cancelado|floatformat:2 }}</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_cancelado|currency_br }}</p>
             <p class="text-xs font-medium text-slate-500">{{ total_cancelados|intcomma }} boleto(s)</p>
           </div>
         </div>
@@ -125,7 +125,7 @@
           </span>
           <div>
             <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos em atraso</p>
-            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_em_atraso|floatformat:2 }}</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_em_atraso|currency_br }}</p>
             <p class="text-xs font-medium text-slate-500">{{ total_em_atraso|intcomma }} boleto(s)</p>
           </div>
         </div>
@@ -142,7 +142,7 @@
           </span>
           <div>
             <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">Boletos a receber</p>
-            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_a_receber|floatformat:2 }}</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_a_receber|currency_br }}</p>
             <p class="text-xs font-medium text-slate-500">{{ total_a_receber|intcomma }} boleto(s)</p>
           </div>
         </div>
