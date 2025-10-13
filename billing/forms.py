@@ -2,7 +2,7 @@ from django import forms
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from .models import Cliente, Boleto
+from .models import Cliente, Boleto, ConciliacaoLancamento
 
 
 def _coerce_int_or_none(value):
@@ -150,6 +150,7 @@ class BoletoForm(forms.ModelForm):
             "data_vencimento",
             "valor",
             "status",
+            "forma_pagamento",
             "nosso_numero",
             "linha_digitavel",
             "codigo_barras",
@@ -169,3 +170,48 @@ class BoletoForm(forms.ModelForm):
 
 class ClienteImportForm(forms.Form):
     arquivo = forms.FileField(label="Planilha Excel (.xlsx)")
+
+
+class ConciliacaoUploadForm(forms.Form):
+    arquivo = forms.FileField(label="Extrato em CSV")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["arquivo"].widget.attrs.update(
+            {
+                "class": "mt-1 block w-full rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200",
+            }
+        )
+
+    def clean_arquivo(self):
+        arquivo = self.cleaned_data["arquivo"]
+        nome = (arquivo.name or "").lower()
+        if not nome.endswith(".csv"):
+            raise forms.ValidationError("Envie um arquivo com extensao .csv.")
+        return arquivo
+
+
+class ConciliacaoLinkForm(forms.Form):
+    acao = forms.CharField(widget=forms.HiddenInput(), initial="vincular")
+    lancamento_id = forms.IntegerField(widget=forms.HiddenInput())
+    boleto_id = forms.IntegerField(required=True)
+
+    def clean(self):
+        cleaned = super().clean()
+        lancamento_id = cleaned.get("lancamento_id")
+        boleto_id = cleaned.get("boleto_id")
+        if not lancamento_id or not boleto_id:
+            raise forms.ValidationError("Informe o lancamento e o boleto a vincular.")
+        try:
+            lancamento = ConciliacaoLancamento.objects.get(pk=lancamento_id)
+        except ConciliacaoLancamento.DoesNotExist as exc:
+            raise forms.ValidationError("Lancamento de conciliacao nao foi encontrado.") from exc
+        try:
+            boleto = Boleto.objects.get(pk=boleto_id)
+        except Boleto.DoesNotExist as exc:
+            raise forms.ValidationError("Boleto selecionado nao existe mais.") from exc
+        if boleto.status not in ("emitido", "atrasado"):
+            raise forms.ValidationError("Somente boletos emitidos ou atrasados podem ser conciliados.")
+        cleaned["lancamento"] = lancamento
+        cleaned["boleto"] = boleto
+        return cleaned

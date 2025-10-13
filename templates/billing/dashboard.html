@@ -98,6 +98,23 @@
         </div>
       </div>
 
+      <div class="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-sky-50 via-white to-white p-6 shadow-sm">
+        <div class="absolute -right-14 -top-14 h-36 w-36 rounded-full bg-sky-100/60"></div>
+        <div class="relative flex items-center gap-4">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500 text-white shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M7 15h2m3 0h2m3 0h2M5 7l.553-1.106A2 2 0 017.382 5h9.236a2 2 0 011.829 1.106L19 7" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 7h14v10a2 2 0 01-2 2H7a2 2 0 01-2-2V7z" />
+            </svg>
+          </span>
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-slate-500">PIX/Dinheiro</p>
+            <p class="text-3xl font-semibold text-slate-900">R$ {{ valor_pix_dinheiro|currency_br }}</p>
+            <p class="text-xs font-medium text-slate-500">{{ total_pix_dinheiro|intcomma }} boleto(s)</p>
+          </div>
+        </div>
+      </div>
+
       <div class="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-rose-50 via-white to-white p-6 shadow-sm">
         <div class="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-rose-100/60"></div>
         <div class="relative flex items-center gap-4">

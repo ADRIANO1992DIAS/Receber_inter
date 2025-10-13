@@ -38,6 +38,11 @@ class Boleto(models.Model):
         ('erro', 'Erro'),
         ('atrasado', 'Atrasado'),
     ]
+    FORMA_PAGAMENTO_CHOICES = [
+        ("", "Nao informado"),
+        ("pix", "PIX"),
+        ("dinheiro", "Dinheiro"),
+    ]
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='boletos')
     competencia_ano = models.PositiveSmallIntegerField()
     competencia_mes = models.PositiveSmallIntegerField()
@@ -52,6 +57,12 @@ class Boleto(models.Model):
     erro_msg = models.TextField(blank=True)
     pdf = models.FileField(upload_to='boletos/', blank=True, null=True)
     data_pagamento = models.DateField(blank=True, null=True)
+    forma_pagamento = models.CharField(
+        max_length=20,
+        choices=FORMA_PAGAMENTO_CHOICES,
+        blank=True,
+        default="",
+    )
 
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -60,3 +71,28 @@ class Boleto(models.Model):
 
     def __str__(self):
         return f"Boleto {self.id} - {self.cliente.nome} {self.competencia_mes:02d}/{self.competencia_ano}"
+
+
+class ConciliacaoLancamento(models.Model):
+    hash_identificador = models.CharField(max_length=128, unique=True)
+    data = models.DateField()
+    descricao = models.CharField(max_length=255)
+    valor = models.DecimalField(max_digits=12, decimal_places=2)
+    boleto = models.ForeignKey(
+        Boleto,
+        on_delete=models.SET_NULL,
+        related_name="conciliacoes",
+        null=True,
+        blank=True,
+    )
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-data", "-id")
+
+    def __str__(self):
+        referencia = f"{self.data:%d/%m/%Y} - {self.descricao}"
+        if self.boleto_id:
+            referencia += f" (Boleto #{self.boleto_id})"
+        return referencia

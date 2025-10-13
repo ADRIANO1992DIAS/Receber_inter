@@ -1,12 +1,15 @@
 ﻿import base64
 import calendar
+import csv
+import hashlib
 import datetime as dt
 import io
 import unicodedata
 import zipfile
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Optional, List, Set, Dict, Any
+from typing import Optional, List, Set, Dict, Any, Tuple
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -23,8 +26,15 @@ from django.utils.text import slugify
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-from .models import Cliente, Boleto
-from .forms import SelecionarClientesForm, ClienteForm, BoletoForm, ClienteImportForm
+from .models import Cliente, Boleto, ConciliacaoLancamento
+from .forms import (
+    SelecionarClientesForm,
+    ClienteForm,
+    BoletoForm,
+    ClienteImportForm,
+    ConciliacaoUploadForm,
+    ConciliacaoLinkForm,
+)
 from .services.inter_service import InterService
 
 
@@ -383,8 +393,18 @@ def dashboard(request):
     total_recebidos = boletos_qs.filter(status="pago").count()
     total_cancelados = boletos_qs.filter(status="cancelado").count()
     total_valor_gerado = boletos_qs.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
-    total_valor_recebido = boletos_qs.filter(status="pago").aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+    boletos_recebidos = boletos_qs.filter(status="pago")
+    total_valor_recebido = boletos_recebidos.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
     total_valor_cancelado = boletos_qs.filter(status="cancelado").aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+
+    boletos_pix = boletos_recebidos.filter(forma_pagamento="pix")
+    boletos_dinheiro = boletos_recebidos.filter(forma_pagamento="dinheiro")
+    total_pix = boletos_pix.count()
+    total_dinheiro = boletos_dinheiro.count()
+    valor_pix = boletos_pix.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+    valor_dinheiro = boletos_dinheiro.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+    total_pix_dinheiro = total_pix + total_dinheiro
+    valor_pix_dinheiro = (valor_pix or Decimal("0")) + (valor_dinheiro or Decimal("0"))
 
     hoje = hoje or timezone.localdate()
     boletos_em_aberto = boletos_qs.filter(status__in=["emitido", "novo", "atrasado"])
@@ -441,6 +461,8 @@ def dashboard(request):
         "valor_gerado": total_valor_gerado,
         "valor_recebido": total_valor_recebido,
         "valor_cancelado": total_valor_cancelado,
+        "total_pix_dinheiro": total_pix_dinheiro,
+        "valor_pix_dinheiro": valor_pix_dinheiro,
         "total_em_atraso": total_em_atraso,
         "valor_em_atraso": valor_em_atraso,
         "total_a_receber": total_a_receber,
@@ -454,6 +476,239 @@ def dashboard(request):
         "ultimos_boletos": ultimos_boletos,
     }
     return render(request, "billing/dashboard.html", context)
+
+
+def _hash_conciliacao(data: dt.date, descricao: str, valor: Decimal) -> str:
+    descricao_normalizada = (
+        unicodedata.normalize("NFKD", descricao or "")
+        .encode("ASCII", "ignore")
+        .decode()
+        .strip()
+        .lower()
+    )
+    valor_formatado = format(valor.quantize(Decimal("0.01")), ".2f")
+    base = f"{data.isoformat()}|{descricao_normalizada}|{valor_formatado}"
+    return hashlib.sha1(base.encode("utf-8")).hexdigest()
+
+
+def _normalizar_texto_para_match(texto: str) -> str:
+    if not texto:
+        return ""
+    texto = unicodedata.normalize("NFKD", texto).encode("ASCII", "ignore").decode()
+    return " ".join(texto.lower().split())
+
+
+def _carregar_conciliacao_csv(arquivo) -> Tuple[List["ConciliacaoLancamento"], int]:
+    bruto = arquivo.read()
+    try:
+        texto = bruto.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        texto = bruto.decode("latin-1")
+    finally:
+        arquivo.seek(0)
+
+    leitor = csv.reader(io.StringIO(texto), delimiter=";")
+    registros: List[ConciliacaoLancamento] = []
+    cabecalho_encontrado = False
+    auto_baixas = 0
+
+    for linha in leitor:
+        colunas = [col.strip() for col in linha]
+        if not any(colunas):
+            continue
+        if not cabecalho_encontrado:
+            colunas_normalizadas = [
+                unicodedata.normalize("NFKD", coluna or "").lower() for coluna in colunas
+            ]
+            if len(colunas_normalizadas) >= 4 and "data" in colunas_normalizadas[0] and "valor" in colunas_normalizadas[3]:
+                cabecalho_encontrado = True
+            continue
+        if len(colunas) < 4:
+            continue
+
+        data_txt, _, historico_txt, valor_txt, *restante = colunas
+        descricao_txt = (colunas[2] or historico_txt or "").strip()
+        if not data_txt or not valor_txt:
+            continue
+        try:
+            data = dt.datetime.strptime(data_txt, "%d/%m/%Y").date()
+        except ValueError:
+            continue
+        valor_normalizado = (
+            valor_txt.replace("R$", "").replace(" ", "").replace(".", "").replace(",", ".")
+        )
+        try:
+            valor = Decimal(valor_normalizado).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError):
+            continue
+
+        hash_identificador = _hash_conciliacao(data, descricao_txt, valor)
+        lancamento, created = ConciliacaoLancamento.objects.get_or_create(
+            hash_identificador=hash_identificador,
+            defaults={
+                "data": data,
+                "descricao": descricao_txt,
+                "valor": valor,
+            },
+        )
+
+        campos_para_atualizar: List[str] = []
+        if not created:
+            if lancamento.data != data:
+                lancamento.data = data
+                campos_para_atualizar.append("data")
+            if lancamento.descricao != descricao_txt:
+                lancamento.descricao = descricao_txt
+                campos_para_atualizar.append("descricao")
+            if lancamento.valor != valor:
+                lancamento.valor = valor
+                campos_para_atualizar.append("valor")
+            if campos_para_atualizar:
+                lancamento.save(update_fields=campos_para_atualizar + ["atualizado_em"])
+
+        registros.append(lancamento)
+
+        boleto = lancamento.boleto
+        if boleto and boleto.status in ("emitido", "atrasado"):
+            _registrar_pagamento_manual(boleto, forma_pagamento="pix", data_pagamento=lancamento.data)
+            auto_baixas += 1
+
+    if not cabecalho_encontrado:
+        raise ValueError("Cabecalho 'Data;Descricao;Valor' nao encontrado no arquivo CSV.")
+    if not registros:
+        raise ValueError("Nenhum registro valido foi encontrado no arquivo.")
+    return registros, auto_baixas
+
+
+@login_required
+def conciliacao(request):
+    upload_form = ConciliacaoUploadForm()
+    novos_ids: Set[int] = set()
+    auto_baixas = 0
+
+    if request.method == "POST":
+        acao = request.POST.get("acao") or "upload"
+        if acao == "vincular":
+            link_form = ConciliacaoLinkForm(request.POST)
+            if link_form.is_valid():
+                lancamento = link_form.cleaned_data["lancamento"]
+                boleto = link_form.cleaned_data["boleto"]
+                lancamento.boleto = boleto
+                lancamento.save(update_fields=["boleto", "atualizado_em"])
+                _registrar_pagamento_manual(boleto, forma_pagamento="pix", data_pagamento=lancamento.data)
+                messages.success(
+                    request,
+                    f"Lancamento de {lancamento.descricao} vinculado ao boleto #{boleto.id} e marcado como pago.",
+                )
+                return redirect("conciliacao")
+            for erro in link_form.errors.get("__all__", []):
+                messages.error(request, erro)
+            for campo, erros in link_form.errors.items():
+                if campo == "__all__":
+                    continue
+                for erro in erros:
+                    messages.error(request, erro)
+        else:
+            upload_form = ConciliacaoUploadForm(request.POST, request.FILES)
+            if upload_form.is_valid():
+                arquivo = upload_form.cleaned_data["arquivo"]
+                try:
+                    registros_importados, auto_baixas = _carregar_conciliacao_csv(arquivo)
+                except ValueError as exc:
+                    upload_form.add_error(None, str(exc))
+                else:
+                    novos_ids = {reg.id for reg in registros_importados}
+                    total = len(registros_importados)
+                    if total:
+                        mensagem = f"{total} registro(s) processado(s) do extrato."
+                        if auto_baixas:
+                            mensagem += f" {auto_baixas} boleto(s) conciliado(s) automaticamente."
+                        messages.success(request, mensagem)
+                    else:
+                        messages.info(request, "Arquivo processado, mas nenhum novo lancamento foi encontrado.")
+            else:
+                mensagens = upload_form.errors.get("__all__", [])
+                for erro in mensagens:
+                    messages.error(request, erro)
+
+    boletos_elegiveis = list(
+        Boleto.objects.filter(status__in=["emitido", "atrasado"])
+        .select_related("cliente")
+        .order_by("cliente__nome", "competencia_ano", "competencia_mes")
+    )
+
+    registros_queryset = (
+        ConciliacaoLancamento.objects.select_related("boleto", "boleto__cliente")
+        .order_by("-data", "-id")[:200]
+    )
+
+    registros_contexto = []
+    for lancamento in registros_queryset:
+        descricao_normalizada = _normalizar_texto_para_match(lancamento.descricao)
+        sugestoes: List[Dict[str, Any]] = []
+
+        for boleto in boletos_elegiveis:
+            valor_diff = abs(
+                (boleto.valor - lancamento.valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            )
+            cliente_normalizado = _normalizar_texto_para_match(boleto.cliente.nome)
+            similaridade = (
+                SequenceMatcher(None, descricao_normalizada, cliente_normalizado).ratio()
+                if descricao_normalizada and cliente_normalizado
+                else 0.0
+            )
+            sugestoes.append(
+                {
+                    "boleto": boleto,
+                    "valor_diff": valor_diff,
+                    "valor_match": valor_diff == Decimal("0.00"),
+                    "similaridade": similaridade,
+                    "similaridade_percent": int(round(similaridade * 100)),
+                }
+            )
+
+        sugestoes.sort(
+            key=lambda item: (
+                item["valor_diff"],
+                -item["similaridade"],
+                item["boleto"].id,
+            )
+        )
+        sugestoes = sugestoes[:10]
+
+        melhor_sugestao = sugestoes[0] if sugestoes else None
+        melhor_similaridade = melhor_sugestao["similaridade"] if melhor_sugestao else 0.0
+
+        registros_contexto.append(
+            {
+                "lancamento": lancamento,
+                "sugestoes": sugestoes,
+                "is_novo": lancamento.id in novos_ids,
+                "melhor_sugestao": melhor_sugestao,
+                "melhor_similaridade": melhor_similaridade,
+            }
+        )
+
+    registros_contexto.sort(
+        key=lambda item: (
+            0 if item["lancamento"].boleto_id is None else 1,
+            -item["melhor_similaridade"],
+            -item["lancamento"].data.toordinal(),
+            -item["lancamento"].id,
+        )
+    )
+
+    return render(
+        request,
+        "billing/conciliacao.html",
+        {
+            "upload_form": upload_form,
+            "registros": registros_contexto,
+            "boletos_disponiveis": boletos_elegiveis,
+            "boletos_total": len(boletos_elegiveis),
+            "auto_baixas": auto_baixas,
+        },
+    )
 
 
 @login_required
@@ -538,6 +793,9 @@ def sincronizar_boletos(request):
             if boleto.data_pagamento:
                 boleto.data_pagamento = None
                 update_fields.add("data_pagamento")
+            if boleto.forma_pagamento:
+                boleto.forma_pagamento = ""
+                update_fields.add("forma_pagamento")
 
         if boleto.status != novo_status:
             boleto.status = novo_status
@@ -831,10 +1089,16 @@ def boletos_list(request):
             ano_selecionado = str(ano_valor)
 
     status_choices_map = dict(Boleto.STATUS_CHOICES)
-    status_opcoes = [
-        {"value": "", "label": "Todos"},
-    ] + [
-        {"value": value, "label": label} for value, label in Boleto.STATUS_CHOICES
+    status_choices_visiveis = sorted(
+        [
+            (value, label)
+            for value, label in Boleto.STATUS_CHOICES
+            if value != "novo"
+        ],
+        key=lambda item: item[1],
+    )
+    status_opcoes = [{"value": "", "label": "Todos"}] + [
+        {"value": value, "label": label} for value, label in status_choices_visiveis
     ]
 
     status_selecionado = ""
@@ -1084,11 +1348,34 @@ def baixar_pdf_lote(request):
 @login_required
 def marcar_pago(request, boleto_id: int):
     boleto = get_object_or_404(Boleto, id=boleto_id)
-    boleto.status = "pago"
-    boleto.data_pagamento = dt.date.today()
-    boleto.save()
+    _registrar_pagamento_manual(boleto, forma_pagamento="")
     messages.success(request, "Baixa registrada no sistema.")
     return redirect("boletos_list")
+
+
+@login_required
+def marcar_pago_pix(request, boleto_id: int):
+    boleto = get_object_or_404(Boleto, id=boleto_id)
+    _registrar_pagamento_manual(boleto, forma_pagamento="pix")
+    messages.success(request, "Baixa registrada via PIX.")
+    return redirect("boletos_list")
+
+
+@login_required
+def marcar_pago_dinheiro(request, boleto_id: int):
+    boleto = get_object_or_404(Boleto, id=boleto_id)
+    _registrar_pagamento_manual(boleto, forma_pagamento="dinheiro")
+    messages.success(request, "Baixa registrada como recebimento em dinheiro.")
+    return redirect("boletos_list")
+
+
+def _registrar_pagamento_manual(
+    boleto: Boleto, forma_pagamento: str, data_pagamento: Optional[dt.date] = None
+) -> None:
+    boleto.status = "pago"
+    boleto.forma_pagamento = forma_pagamento or ""
+    boleto.data_pagamento = data_pagamento or dt.date.today()
+    boleto.save(update_fields=["status", "forma_pagamento", "data_pagamento"])
 
 
 @login_required

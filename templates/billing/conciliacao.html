@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% load humanize formatters %}
+{% block content %}
+  <div class="space-y-6">
+    <div class="space-y-1">
+      <h2 class="text-2xl font-semibold text-slate-900">Conciliacao de recebimentos</h2>
+      <p class="text-sm text-slate-500">
+        Importe o extrato CSV dos recebimentos via PIX para visualizar e conciliar os lancamentos.
+      </p>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="space-y-4 rounded-2xl border border-slate-200 bg-white/70 p-5 shadow-sm">
+      {% csrf_token %}
+      {% if upload_form.non_field_errors %}
+        <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {{ upload_form.non_field_errors }}
+        </div>
+      {% endif %}
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-6">
+        <div class="flex-1">
+          <label class="text-sm font-semibold text-slate-700" for="{{ upload_form.arquivo.id_for_label }}">Arquivo CSV</label>
+          {{ upload_form.arquivo }}
+          {% if upload_form.arquivo.errors %}
+            <p class="mt-1 text-xs text-rose-600">{{ upload_form.arquivo.errors|striptags }}</p>
+          {% else %}
+            <p class="mt-1 text-xs text-slate-500">Envie o arquivo .csv exatamente como exportado pelo banco.</p>
+          {% endif %}
+        </div>
+        <button
+          type="submit"
+          class="inline-flex items-center justify-center rounded-full bg-brand-600 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          Importar extrato
+        </button>
+      </div>
+    </form>
+
+    {% if registros %}
+      <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white/80 shadow-sm">
+        <table class="min-w-full divide-y divide-slate-200 text-sm text-slate-700">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Data</th>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Descricao</th>
+              <th scope="col" class="px-4 py-3 text-right font-semibold">Valor</th>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">Conciliacao</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for item in registros %}
+              {% with registro=item.lancamento %}
+                <tr class="transition hover:bg-slate-50 {% if item.is_novo %}bg-brand-50/40{% endif %}">
+                  <td class="px-4 py-3 text-slate-900">{{ registro.data|date:"d/m/Y" }}</td>
+                  <td class="px-4 py-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="font-medium text-slate-900">{{ registro.descricao }}</span>
+                      {% if item.is_novo %}
+                        <span class="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand-700">
+                          Novo
+                        </span>
+                      {% endif %}
+                    </div>
+                    {% if registro.boleto %}
+                      <p class="mt-1 text-xs text-slate-500">
+                        Importado em {{ registro.criado_em|date:"d/m/Y" }} - Atualizado {{ registro.atualizado_em|date:"d/m/Y" }}
+                      </p>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-right font-semibold text-slate-900">R$ {{ registro.valor|currency_br }}</td>
+                  <td class="px-4 py-3">
+                    {% if registro.boleto %}
+                      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                        Conciliado com boleto #{{ registro.boleto.id }} - {{ registro.boleto.cliente.nome }}
+                        <br>
+                        Status atual: {{ registro.boleto.get_status_display }}
+                      </div>
+                    {% elif boletos_total %}
+                      {% if item.melhor_sugestao %}
+                        <div class="rounded-2xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-700">
+                          Melhor correspondencia: boleto #{{ item.melhor_sugestao.boleto.id }} - {{ item.melhor_sugestao.boleto.cliente.nome }}
+                          (valor
+                          {% if item.melhor_sugestao.valor_match %}
+                            igual
+                          {% else %}
+                            difere em R$ {{ item.melhor_sugestao.valor_diff|currency_br }}
+                          {% endif %}
+                          - similaridade {{ item.melhor_sugestao.similaridade_percent }}%)
+                        </div>
+                      {% endif %}
+                      <form method="post" class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="acao" value="vincular">
+                        <input type="hidden" name="lancamento_id" value="{{ registro.id }}">
+                        <select
+                          name="boleto_id"
+                          class="w-full rounded-full border border-slate-300 px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+                          required
+                        >
+                          <option value="">Selecionar boleto...</option>
+                          {% for candidato in item.sugestoes %}
+                            {% with boleto=candidato.boleto %}
+                              <option value="{{ boleto.id }}" {% if forloop.first %}selected{% endif %}>
+                                Boleto #{{ boleto.id }} - {{ boleto.cliente.nome }} ({{ boleto.competencia_mes }}/{{ boleto.competencia_ano }})
+                                - R$ {{ boleto.valor|currency_br }}
+                                {% if candidato.valor_match %}
+                                  - valor igual
+                                {% else %}
+                                  - dif: R$ {{ candidato.valor_diff|currency_br }}
+                                {% endif %}
+                                - match {{ candidato.similaridade_percent }}%
+                              </option>
+                            {% endwith %}
+                          {% endfor %}
+                          {% if not item.sugestoes %}
+                            <option value="" disabled>Nenhum boleto sugerido</option>
+                          {% endif %}
+                        </select>
+                        <button
+                          type="submit"
+                          class="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+                        >
+                          Vincular
+                        </button>
+                      </form>
+                    {% else %}
+                      <p class="text-xs text-slate-500">Nao ha boletos emitidos ou atrasados disponiveis para conciliacao.</p>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-sm text-slate-500">Ainda nao ha lancamentos conciliados. Importe um extrato para iniciar.</p>
+    {% endif %}
+  </div>
+{% endblock %}
