@@ -77,6 +77,7 @@ class ConciliacaoLancamento(models.Model):
     hash_identificador = models.CharField(max_length=128, unique=True)
     data = models.DateField()
     descricao = models.CharField(max_length=255)
+    descricao_chave = models.CharField(max_length=255, blank=True, db_index=True)
     valor = models.DecimalField(max_digits=12, decimal_places=2)
     boleto = models.ForeignKey(
         Boleto,
@@ -96,3 +97,16 @@ class ConciliacaoLancamento(models.Model):
         if self.boleto_id:
             referencia += f" (Boleto #{self.boleto_id})"
         return referencia
+
+
+class ConciliacaoAlias(models.Model):
+    descricao_chave = models.CharField(max_length=255, unique=True)
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="conciliacao_aliases")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("descricao_chave",)
+
+    def __str__(self):
+        return f"{self.descricao_chave} -> {self.cliente.nome}"

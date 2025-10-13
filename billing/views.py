@@ -22,11 +22,12 @@ from django.core.files.base import ContentFile
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.utils.text import slugify
+from django.urls import reverse
 
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-from .models import Cliente, Boleto, ConciliacaoLancamento
+from .models import Cliente, Boleto, ConciliacaoLancamento, ConciliacaoAlias
 from .forms import (
     SelecionarClientesForm,
     ClienteForm,
@@ -528,6 +529,7 @@ def _carregar_conciliacao_csv(arquivo) -> Tuple[List["ConciliacaoLancamento"], i
 
         data_txt, _, historico_txt, valor_txt, *restante = colunas
         descricao_txt = (colunas[2] or historico_txt or "").strip()
+        descricao_chave = _normalizar_texto_para_match(descricao_txt)
         if not data_txt or not valor_txt:
             continue
         try:
@@ -548,6 +550,7 @@ def _carregar_conciliacao_csv(arquivo) -> Tuple[List["ConciliacaoLancamento"], i
             defaults={
                 "data": data,
                 "descricao": descricao_txt,
+                "descricao_chave": descricao_chave,
                 "valor": valor,
             },
         )
@@ -560,6 +563,9 @@ def _carregar_conciliacao_csv(arquivo) -> Tuple[List["ConciliacaoLancamento"], i
             if lancamento.descricao != descricao_txt:
                 lancamento.descricao = descricao_txt
                 campos_para_atualizar.append("descricao")
+            if lancamento.descricao_chave != descricao_chave:
+                lancamento.descricao_chave = descricao_chave
+                campos_para_atualizar.append("descricao_chave")
             if lancamento.valor != valor:
                 lancamento.valor = valor
                 campos_para_atualizar.append("valor")
@@ -568,10 +574,40 @@ def _carregar_conciliacao_csv(arquivo) -> Tuple[List["ConciliacaoLancamento"], i
 
         registros.append(lancamento)
 
+        alias_cliente: Optional[ConciliacaoAlias] = None
+        if descricao_chave:
+            alias_cliente = (
+                ConciliacaoAlias.objects.select_related("cliente")
+                .filter(descricao_chave=descricao_chave)
+                .first()
+            )
+
         boleto = lancamento.boleto
         if boleto and boleto.status in ("emitido", "atrasado"):
             _registrar_pagamento_manual(boleto, forma_pagamento="pix", data_pagamento=lancamento.data)
+            if alias_cliente is None and descricao_chave:
+                ConciliacaoAlias.objects.get_or_create(
+                    descricao_chave=descricao_chave,
+                    defaults={"cliente": boleto.cliente},
+                )
             auto_baixas += 1
+            continue
+
+        if alias_cliente and not lancamento.boleto_id:
+            boleto_auto = (
+                Boleto.objects.filter(
+                    cliente=alias_cliente.cliente,
+                    status__in=["emitido", "atrasado"],
+                    valor=lancamento.valor,
+                )
+                .order_by("data_vencimento", "id")
+                .first()
+            )
+            if boleto_auto:
+                lancamento.boleto = boleto_auto
+                lancamento.save(update_fields=["boleto", "atualizado_em"])
+                _registrar_pagamento_manual(boleto_auto, forma_pagamento="pix", data_pagamento=lancamento.data)
+                auto_baixas += 1
 
     if not cabecalho_encontrado:
         raise ValueError("Cabecalho 'Data;Descricao;Valor' nao encontrado no arquivo CSV.")
@@ -582,25 +618,52 @@ def _carregar_conciliacao_csv(arquivo) -> Tuple[List["ConciliacaoLancamento"], i
 
 @login_required
 def conciliacao(request):
+    pendentes_only = request.GET.get("pendentes") == "1"
     upload_form = ConciliacaoUploadForm()
     novos_ids: Set[int] = set()
     auto_baixas = 0
 
     if request.method == "POST":
         acao = request.POST.get("acao") or "upload"
+        if acao == "apagar_pendentes":
+            removidos, _ = ConciliacaoLancamento.objects.filter(boleto__isnull=True).delete()
+            if removidos:
+                messages.success(request, f"{removidos} lancamento(s) sem vinculo removido(s).")
+            else:
+                messages.info(request, "Nenhum lancamento pendente para remover.")
+            redirect_url = reverse("conciliacao")
+            if pendentes_only:
+                redirect_url += "?pendentes=1"
+            return redirect(redirect_url)
         if acao == "vincular":
             link_form = ConciliacaoLinkForm(request.POST)
             if link_form.is_valid():
                 lancamento = link_form.cleaned_data["lancamento"]
                 boleto = link_form.cleaned_data["boleto"]
+                descricao_chave = lancamento.descricao_chave or _normalizar_texto_para_match(lancamento.descricao)
+                update_fields = ["boleto", "atualizado_em"]
+                if descricao_chave and lancamento.descricao_chave != descricao_chave:
+                    lancamento.descricao_chave = descricao_chave
+                    update_fields.append("descricao_chave")
                 lancamento.boleto = boleto
-                lancamento.save(update_fields=["boleto", "atualizado_em"])
+                lancamento.save(update_fields=update_fields)
+                if descricao_chave:
+                    alias, created = ConciliacaoAlias.objects.get_or_create(
+                        descricao_chave=descricao_chave,
+                        defaults={"cliente": boleto.cliente},
+                    )
+                    if not created and alias.cliente_id != boleto.cliente_id:
+                        alias.cliente = boleto.cliente
+                        alias.save(update_fields=["cliente", "atualizado_em"])
                 _registrar_pagamento_manual(boleto, forma_pagamento="pix", data_pagamento=lancamento.data)
                 messages.success(
                     request,
                     f"Lancamento de {lancamento.descricao} vinculado ao boleto #{boleto.id} e marcado como pago.",
                 )
-                return redirect("conciliacao")
+                redirect_url = reverse("conciliacao")
+                if pendentes_only:
+                    redirect_url += "?pendentes=1"
+                return redirect(redirect_url)
             for erro in link_form.errors.get("__all__", []):
                 messages.error(request, erro)
             for campo, erros in link_form.errors.items():
@@ -637,10 +700,10 @@ def conciliacao(request):
         .order_by("cliente__nome", "competencia_ano", "competencia_mes")
     )
 
-    registros_queryset = (
-        ConciliacaoLancamento.objects.select_related("boleto", "boleto__cliente")
-        .order_by("-data", "-id")[:200]
-    )
+    registros_queryset = ConciliacaoLancamento.objects.select_related("boleto", "boleto__cliente")
+    if pendentes_only:
+        registros_queryset = registros_queryset.filter(boleto__isnull=True)
+    registros_queryset = registros_queryset.order_by("-data", "-id")[:200]
 
     registros_contexto = []
     for lancamento in registros_queryset:
@@ -698,6 +761,8 @@ def conciliacao(request):
         )
     )
 
+    pendentes_total = ConciliacaoLancamento.objects.filter(boleto__isnull=True).count()
+
     return render(
         request,
         "billing/conciliacao.html",
@@ -707,6 +772,8 @@ def conciliacao(request):
             "boletos_disponiveis": boletos_elegiveis,
             "boletos_total": len(boletos_elegiveis),
             "auto_baixas": auto_baixas,
+            "pendentes_total": pendentes_total,
+            "pendentes_only": pendentes_only,
         },
     )
 
