@@ -350,45 +350,74 @@ def clientes_list(request):
 def dashboard(request):
     boletos_qs = Boleto.objects.select_related("cliente").all()
 
-    mes_param = request.GET.get("mes", "").strip()
-    ano_param = request.GET.get("ano", "").strip()
-    dia_param = request.GET.get("dia", "").strip()
+    mes_params = [valor.strip() for valor in request.GET.getlist("mes")]
+    ano_params = [valor.strip() for valor in request.GET.getlist("ano")]
+    dia_params = [valor.strip() for valor in request.GET.getlist("dia")]
 
     hoje = timezone.localdate()
-    if not mes_param and hoje:
-        mes_param = str(hoje.month)
-    if not ano_param and hoje:
-        ano_param = str(hoje.year)
 
-    mes_selecionado = ""
-    if mes_param:
-        try:
-            mes_valor = int(mes_param)
-        except ValueError:
-            mes_valor = None
-        if mes_valor and 1 <= mes_valor <= 12:
-            boletos_qs = boletos_qs.filter(competencia_mes=mes_valor)
-            mes_selecionado = str(mes_valor)
+    meses_selecionados: List[str] = []
+    anos_selecionados: List[str] = []
+    dias_selecionados: List[str] = []
 
-    ano_selecionado = ""
-    if ano_param:
-        try:
-            ano_valor = int(ano_param)
-        except ValueError:
-            ano_valor = None
-        if ano_valor:
-            boletos_qs = boletos_qs.filter(competencia_ano=ano_valor)
-            ano_selecionado = str(ano_valor)
+    if "mes" not in request.GET:
+        if hoje:
+            boletos_qs = boletos_qs.filter(competencia_mes=hoje.month)
+            meses_selecionados = [str(hoje.month)]
+    elif "" in mes_params:
+        meses_selecionados = [""]
+    else:
+        meses_validos: List[int] = []
+        for valor in mes_params:
+            if not valor:
+                continue
+            try:
+                mes_valor = int(valor)
+            except ValueError:
+                continue
+            if 1 <= mes_valor <= 12 and mes_valor not in meses_validos:
+                meses_validos.append(mes_valor)
+                meses_selecionados.append(str(mes_valor))
+        if meses_validos:
+            boletos_qs = boletos_qs.filter(competencia_mes__in=meses_validos)
 
-    dia_selecionado = ""
-    if dia_param:
-        try:
-            dia_valor = int(dia_param)
-        except ValueError:
-            dia_valor = None
-        if dia_valor and 1 <= dia_valor <= 31:
-            boletos_qs = boletos_qs.filter(data_vencimento__day=dia_valor)
-            dia_selecionado = str(dia_valor)
+    if "ano" not in request.GET:
+        if hoje:
+            boletos_qs = boletos_qs.filter(competencia_ano=hoje.year)
+            anos_selecionados = [str(hoje.year)]
+    elif "" in ano_params:
+        anos_selecionados = [""]
+    else:
+        anos_validos: List[int] = []
+        for valor in ano_params:
+            if not valor:
+                continue
+            try:
+                ano_valor = int(valor)
+            except ValueError:
+                continue
+            if ano_valor not in anos_validos:
+                anos_validos.append(ano_valor)
+                anos_selecionados.append(str(ano_valor))
+        if anos_validos:
+            boletos_qs = boletos_qs.filter(competencia_ano__in=anos_validos)
+
+    if "" in dia_params:
+        dias_selecionados = [""]
+    else:
+        dias_validos: List[int] = []
+        for valor in dia_params:
+            if not valor:
+                continue
+            try:
+                dia_valor = int(valor)
+            except ValueError:
+                continue
+            if 1 <= dia_valor <= 31 and dia_valor not in dias_validos:
+                dias_validos.append(dia_valor)
+                dias_selecionados.append(str(dia_valor))
+        if dias_validos:
+            boletos_qs = boletos_qs.filter(data_vencimento__day__in=dias_validos)
 
     total_gerados = boletos_qs.count()
     total_recebidos = boletos_qs.filter(status="pago").count()
@@ -449,6 +478,28 @@ def dashboard(request):
         if dia is not None
     ]
 
+    def _resumo_selecao(opcoes, selecionados):
+        if "" in selecionados or not selecionados:
+            return "Todos"
+        valores_validos = [valor for valor in selecionados if valor]
+        if not valores_validos:
+            return "Todos"
+        if len(valores_validos) > 1:
+            return "Diversos"
+        alvo = valores_validos[0]
+        for opcao in opcoes:
+            if isinstance(opcao, dict):
+                if str(opcao.get("value", "")) == alvo:
+                    return str(opcao.get("label", alvo))
+            else:
+                if str(opcao) == alvo:
+                    return str(opcao)
+        return str(alvo)
+
+    anos_contexto = [{"value": "", "label": "Todos"}] + [
+        {"value": str(ano), "label": str(ano)} for ano in anos_disponiveis
+    ]
+
     ultimos_boletos = (
         boletos_qs.order_by("-criado_em")[:5]
         if total_gerados
@@ -471,9 +522,12 @@ def dashboard(request):
         "meses": meses_contexto,
         "anos": [str(ano) for ano in anos_disponiveis],
         "dias": dias_contexto,
-        "mes_selecionado": mes_selecionado,
-        "ano_selecionado": ano_selecionado,
-        "dia_selecionado": dia_selecionado,
+        "meses_selecionados": meses_selecionados,
+        "anos_selecionados": anos_selecionados,
+        "dias_selecionados": dias_selecionados,
+        "resumo_meses": _resumo_selecao(meses_contexto, meses_selecionados),
+        "resumo_anos": _resumo_selecao(anos_contexto, anos_selecionados),
+        "resumo_dias": _resumo_selecao(dias_contexto, dias_selecionados),
         "ultimos_boletos": ultimos_boletos,
     }
     return render(request, "billing/dashboard.html", context)

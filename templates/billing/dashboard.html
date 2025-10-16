@@ -12,43 +12,62 @@
     <form method="get" class="rounded-3xl border border-slate-200 bg-white/70 p-5 shadow-sm">
       <div class="grid gap-4 md:grid-cols-3">
         <div class="flex flex-col gap-1">
-          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-dashboard-mes">Mês</label>
+          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center justify-between" for="filtro-dashboard-mes">
+            <span>Mês</span>
+            <span class="text-[10px] font-medium uppercase tracking-wide text-slate-400">{{ resumo_meses }}</span>
+          </label>
           <select
             id="filtro-dashboard-mes"
             name="mes"
-            class="rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+            multiple
+            class="h-12 rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200 overflow-y-auto"
+            style="height: 48px;"
+            title="Use Ctrl (ou Cmd no Mac) para selecionar múltiplos valores."
           >
             {% for mes in meses %}
-              <option value="{{ mes.value }}"{% if mes.value == mes_selecionado %} selected{% endif %}>{{ mes.label }}</option>
+              <option value="{{ mes.value }}"{% if mes.value in meses_selecionados %} selected{% endif %}>{{ mes.label }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-dashboard-ano">Ano</label>
+          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center justify-between" for="filtro-dashboard-ano">
+            <span>Ano</span>
+            <span class="text-[10px] font-medium uppercase tracking-wide text-slate-400">{{ resumo_anos }}</span>
+          </label>
           <select
             id="filtro-dashboard-ano"
             name="ano"
-            class="rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+            multiple
+            class="h-12 rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200 overflow-y-auto"
+            style="height: 48px;"
+            title="Use Ctrl (ou Cmd no Mac) para selecionar múltiplos valores."
           >
-            <option value="">{% if not ano_selecionado %}Todos{% else %}Todos{% endif %}</option>
+            <option value=""{% if "" in anos_selecionados %} selected{% endif %}>Todos</option>
             {% for ano in anos %}
-              <option value="{{ ano }}"{% if ano == ano_selecionado %} selected{% endif %}>{{ ano }}</option>
+              <option value="{{ ano }}"{% if ano in anos_selecionados %} selected{% endif %}>{{ ano }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-dashboard-dia">Dia</label>
+          <label class="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center justify-between" for="filtro-dashboard-dia">
+            <span>Dia</span>
+            <span class="text-[10px] font-medium uppercase tracking-wide text-slate-400">{{ resumo_dias }}</span>
+          </label>
           <select
             id="filtro-dashboard-dia"
             name="dia"
-            class="rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200"
+            multiple
+            class="h-12 rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-200 overflow-y-auto"
+            style="height: 48px;"
+            title="Use Ctrl (ou Cmd no Mac) para selecionar múltiplos valores."
           >
             {% for dia in dias %}
-              <option value="{{ dia.value }}"{% if dia.value == dia_selecionado %} selected{% endif %}>{{ dia.label }}</option>
+              <option value="{{ dia.value }}"{% if dia.value in dias_selecionados %} selected{% endif %}>{{ dia.label }}</option>
             {% endfor %}
           </select>
         </div>
       </div>
+      <p class="mt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">Selecione múltiplos itens segurando Ctrl (ou Cmd no Mac).</p>
       <div class="mt-4 flex flex-wrap gap-3">
         <button
           type="submit"
