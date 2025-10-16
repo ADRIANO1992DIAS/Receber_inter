@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% load formatters %}
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 class="text-xl font-semibold text-slate-900">Enviar boletos via WhatsApp</h2>
+        <p class="text-sm text-slate-500">
+          Visualize os boletos emitidos, confirme os contatos e dispare o envio diretamente pelo WhatsApp.
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          data-config-toggle="configuracao-panel"
+          class="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+        >
+          Configuracao
+        </button>
+        {% if total %}
+          <form method="post" class="inline-flex">
+            {% csrf_token %}
+            <input type="hidden" name="enviar_todos" value="1">
+            <button
+              type="submit"
+              class="inline-flex items-center justify-center rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+            >
+              Enviar todos
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div
+      id="configuracao-panel"
+      class="{% if not mensagem_form.errors %}hidden {% endif %}rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm"
+    >
+      <form method="post" class="flex flex-col gap-4">
+        {% csrf_token %}
+        <input type="hidden" name="acao" value="atualizar_mensagem">
+        {% if mensagem_form.non_field_errors %}
+          <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+            {% for erro in mensagem_form.non_field_errors %}
+              <p>{{ erro }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <div class="flex flex-col gap-2">
+          <label
+            for="{{ mensagem_form.saudacao_template.id_for_label }}"
+            class="text-sm font-semibold text-slate-700"
+          >
+            {{ mensagem_form.saudacao_template.label }}
+          </label>
+          {{ mensagem_form.saudacao_template }}
+          {% if mensagem_form.saudacao_template.errors %}
+            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-600">
+              {% for erro in mensagem_form.saudacao_template.errors %}
+                <p>{{ erro }}</p>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <p class="text-xs text-slate-400">
+            Variaveis disponiveis: <code>{cliente}</code>, <code>{vencimento}</code>, <code>{valor}</code>.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Mensagem atual</p>
+          <p class="mt-2 text-sm text-slate-700">{{ mensagem_config.saudacao_template }}</p>
+        </div>
+        <div class="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            data-config-toggle="configuracao-panel"
+            class="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+          >
+            Salvar configuracao
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Total</p>
+        <p class="mt-2 text-2xl font-semibold text-slate-900">{{ total }}</p>
+      </div>
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide text-amber-500">A enviar</p>
+        <p class="mt-2 text-2xl font-semibold text-amber-700">{{ total_pendentes }}</p>
+      </div>
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide text-emerald-600">Enviados</p>
+        <p class="mt-2 text-2xl font-semibold text-emerald-700">{{ total_enviados }}</p>
+      </div>
+      <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wide text-rose-600">Erros</p>
+        <p class="mt-2 text-2xl font-semibold text-rose-700">{{ total_erros }}</p>
+      </div>
+    </div>
+
+    <div class="rounded-3xl border border-slate-200 bg-white/80 shadow-sm backdrop-blur">
+      <div class="overflow-hidden rounded-3xl">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th scope="col" class="px-4 py-3">Cliente</th>
+              <th scope="col" class="px-4 py-3">Comp.</th>
+              <th scope="col" class="px-4 py-3">Vencimento</th>
+              <th scope="col" class="px-4 py-3">Valor</th>
+              <th scope="col" class="px-4 py-3">Telefone</th>
+              <th scope="col" class="px-4 py-3">Status</th>
+              <th scope="col" class="px-4 py-3">Ações</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200 text-sm text-slate-700">
+            {% for boleto in boletos %}
+              <tr class="hover:bg-slate-50/60">
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-900">{{ boleto.cliente }}</p>
+                  <p class="text-xs text-slate-500">Código: {{ boleto.codigo_barras|default:"—" }}</p>
+                </td>
+                <td class="px-4 py-3">{{ boleto.competencia }}</td>
+                <td class="px-4 py-3">
+                  {% if boleto.vencimento %}
+                    {{ boleto.vencimento|date:"d/m/Y" }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3 font-semibold text-slate-900">R$ {{ boleto.valor|currency_br }}</td>
+                <td class="px-4 py-3">
+                  {% if boleto.telefone %}
+                    <span class="font-medium text-slate-800">{{ boleto.telefone }}</span>
+                  {% else %}
+                    <span class="text-xs font-semibold uppercase tracking-wide text-rose-600">Telefone inválido</span>
+                  {% endif %}
+                  {% if boleto.telefone_whatsapp %}
+                    <p class="text-xs text-slate-400">WhatsApp: {{ boleto.telefone_whatsapp }}</p>
+                  {% endif %}
+                  {% if boleto.telefone_bruto %}
+                    <p class="text-xs text-slate-400">Cadastro: {{ boleto.telefone_bruto }}</p>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3">
+                  {% if boleto.status_envio == "Enviado" %}
+                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                      Enviado
+                    </span>
+                  {% elif boleto.status_envio == "Erro" %}
+                    <span class="inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                      <span class="h-2 w-2 rounded-full bg-rose-500"></span>
+                      Erro
+                    </span>
+                  {% else %}
+                    <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      <span class="h-2 w-2 rounded-full bg-amber-500"></span>
+                      A enviar
+                    </span>
+                  {% endif %}
+                  {% if boleto.detalhe_envio %}
+                    <p class="mt-2 text-xs text-rose-600">{{ boleto.detalhe_envio }}</p>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-3">
+                  <div class="flex flex-wrap gap-2">
+                    {% if boleto.pdf_disponivel %}
+                      <a
+                        href="{{ boleto.pdf_url }}"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                      >
+                        Ver PDF
+                      </a>
+                    {% else %}
+                      <span class="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-400">
+                        PDF indisponível
+                      </span>
+                    {% endif %}
+
+                    {% if boleto.pode_enviar %}
+                      <form method="post" class="inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="boleto_id" value="{{ boleto.id }}">
+                        <button
+                          type="submit"
+                          class="inline-flex items-center justify-center rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                        >
+                          Enviar via WhatsApp
+                        </button>
+                      </form>
+                    {% else %}
+                      <span class="inline-flex items-center justify-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                        Ação indisponível
+                      </span>
+                    {% endif %}
+                  </div>
+                  {% if boleto.bloqueios %}
+                    <ul class="mt-2 list-disc pl-4 text-xs text-slate-400">
+                      {% for aviso in boleto.bloqueios %}
+                        <li>{{ aviso }}</li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="7" class="px-4 py-12 text-center text-sm text-slate-500">
+                  Nenhum boleto emitido disponível para envio.
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var buttons = document.querySelectorAll("[data-config-toggle]");
+      buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          var targetId = button.getAttribute("data-config-toggle");
+          if (!targetId) {
+            return;
+          }
+          var panel = document.getElementById(targetId);
+          if (!panel) {
+            return;
+          }
+          panel.classList.toggle("hidden");
+        });
+      });
+    });
+  </script>
+{% endblock %}

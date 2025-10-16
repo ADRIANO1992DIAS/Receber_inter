@@ -19,7 +19,7 @@ from django.db.models import Sum, Q
 from django.db.models.functions import Coalesce, ExtractDay
 from django.contrib.auth.decorators import login_required
 from django.core.files.base import ContentFile
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from django.utils import timezone
 from django.utils.text import slugify
 from django.urls import reverse
@@ -27,7 +27,7 @@ from django.urls import reverse
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-from .models import Cliente, Boleto, ConciliacaoLancamento, ConciliacaoAlias
+from .models import Cliente, Boleto, ConciliacaoLancamento, ConciliacaoAlias, WhatsappConfig
 from .forms import (
     SelecionarClientesForm,
     ClienteForm,
@@ -35,8 +35,10 @@ from .forms import (
     ClienteImportForm,
     ConciliacaoUploadForm,
     ConciliacaoLinkForm,
+    WhatsappMensagemForm,
 )
 from .services.inter_service import InterService
+from .services.whatsapp_service import dispatch_boleto_via_whatsapp, format_whatsapp_phone
 
 
 MESES_CHOICES = [
@@ -1526,3 +1528,139 @@ def cancelar_boleto(request, boleto_id: int):
             messages.success(request, "CobranÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§a cancelada com sucesso no Inter.")
     return redirect("boletos_list")
 
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def enviar_boletos_whatsapp(request):
+    config = WhatsappConfig.get_solo()
+    mensagem_form = WhatsappMensagemForm(instance=config)
+
+    boletos_queryset = (
+        Boleto.objects.filter(status="emitido")
+        .select_related("cliente")
+        .order_by("data_vencimento", "id")
+    )
+    boletos = list(boletos_queryset)
+
+    session_status_map = dict(request.session.get("boletos_envio_status", {}))
+    session_detail_map = dict(request.session.get("boletos_envio_detail", {}))
+    chaves_atuais = {str(boleto.id) for boleto in boletos}
+    session_status_map = {chave: valor for chave, valor in session_status_map.items() if chave in chaves_atuais}
+    session_detail_map = {chave: valor for chave, valor in session_detail_map.items() if chave in chaves_atuais}
+    request.session["boletos_envio_status"] = session_status_map
+    request.session["boletos_envio_detail"] = session_detail_map
+
+    def _detalhe_envio(res: Optional[Dict[str, Any]]) -> str:
+        if not res:
+            return ""
+        if res.get("ok"):
+            return ""
+        mensagem = res.get("error")
+        if mensagem:
+            return mensagem
+        for step in reversed(res.get("steps", [])):
+            payload = step.get("payload")
+            if isinstance(payload, dict):
+                for chave in ("message", "error", "details", "status"):
+                    if payload.get(chave):
+                        return str(payload[chave])
+            elif isinstance(payload, str):
+                return payload
+        return ""
+
+    resultados: List[Dict[str, Any]] = []
+    alvo_ids_raw = request.POST.getlist("boleto_id") if request.method == "POST" else []
+
+    if request.method == "POST":
+        acao = request.POST.get("acao")
+        if acao == "atualizar_mensagem":
+            mensagem_form = WhatsappMensagemForm(request.POST, instance=config)
+            if mensagem_form.is_valid():
+                mensagem_form.save()
+                messages.success(request, "Mensagem de envio atualizada com sucesso.")
+                return redirect("enviar_boletos_whatsapp")
+            messages.error(request, "Corrija os erros no formulario de configuracao.")
+        else:
+            if alvo_ids_raw:
+                boletos_alvo = [boleto for boleto in boletos if str(boleto.id) in alvo_ids_raw]
+            else:
+                boletos_alvo = boletos
+
+            for boleto in boletos_alvo:
+                resultado = dispatch_boleto_via_whatsapp(
+                    boleto,
+                    saudacao_template=config.saudacao_template,
+                )
+                resultados.append(resultado)
+
+            enviados_sucesso = sum(1 for resultado in resultados if resultado.get("ok"))
+            erros_envio = sum(1 for resultado in resultados if not resultado.get("ok"))
+            if enviados_sucesso:
+                messages.success(request, f"{enviados_sucesso} boleto(s) enviado(s) com sucesso via WhatsApp.")
+            if erros_envio:
+                messages.error(request, f"{erros_envio} envio(s) falharam. Verifique os detalhes na listagem abaixo.")
+
+    for resultado in resultados:
+        boleto_id = resultado.get("boleto_id")
+        if not boleto_id:
+            continue
+        chave = str(boleto_id)
+        session_status_map[chave] = "Enviado" if resultado.get("ok") else "Erro"
+        session_detail_map[chave] = _detalhe_envio(resultado)
+
+    if resultados:
+        request.session["boletos_envio_status"] = session_status_map
+        request.session["boletos_envio_detail"] = session_detail_map
+
+    status_map: Dict[int, str] = {
+        boleto.id: session_status_map.get(str(boleto.id), "A enviar")
+        for boleto in boletos
+    }
+
+    tabela_boletos: List[Dict[str, Any]] = []
+    for boleto in boletos:
+        cliente = boleto.cliente
+        telefone_whatsapp = format_whatsapp_phone(cliente)
+        telefone_display = telefone_whatsapp.split("@")[0] if telefone_whatsapp else ""
+        bloqueios: List[str] = []
+        if not telefone_whatsapp:
+            bloqueios.append("Telefone do cliente inválido ou ausente.")
+        if not boleto.pdf:
+            bloqueios.append("PDF do boleto ainda não foi baixado.")
+        tabela_boletos.append(
+            {
+                "id": boleto.id,
+                "cliente": cliente.nome,
+                "competencia": f"{boleto.competencia_mes:02d}/{boleto.competencia_ano}",
+                "valor": boleto.valor,
+                "vencimento": boleto.data_vencimento,
+                "telefone": telefone_display,
+                "telefone_whatsapp": telefone_whatsapp,
+                "telefone_bruto": f"{cliente.ddd or ''}{cliente.telefone or ''}",
+                "codigo_barras": boleto.codigo_barras or boleto.linha_digitavel or "",
+                "pdf_url": boleto.pdf.url if boleto.pdf else "",
+                "pdf_disponivel": bool(boleto.pdf),
+                "status_envio": status_map.get(boleto.id, "A enviar"),
+                "pode_enviar": not bloqueios,
+                "bloqueios": bloqueios,
+                "detalhe_envio": session_detail_map.get(str(boleto.id), ""),
+            }
+        )
+
+    total = len(tabela_boletos)
+    enviados = sum(1 for item in tabela_boletos if item["status_envio"] == "Enviado")
+    erros = sum(1 for item in tabela_boletos if item["status_envio"] == "Erro")
+    pendentes = total - enviados - erros
+
+    context = {
+        "boletos": tabela_boletos,
+        "total": total,
+        "total_enviados": enviados,
+        "total_erros": erros,
+        "total_pendentes": pendentes,
+        "resultados": resultados,
+        "alvo_ids": alvo_ids_raw,
+        "mensagem_form": mensagem_form,
+        "mensagem_config": config,
+    }
+    return render(request, "billing/enviar_boletos_whatsapp.html", context)

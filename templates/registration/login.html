@@ -20,11 +20,11 @@
       <form method="post" novalidate>
         {% csrf_token %}
         <label>
-          {{ form.username.label }}
+          <span>Usuário</span>
           {{ form.username }}
         </label>
         <label>
-          {{ form.password.label }}
+          <span>Senha</span>
           {{ form.password }}
         </label>
         {% if form.username.errors %}

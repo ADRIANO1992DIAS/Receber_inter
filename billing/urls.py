@@ -24,4 +24,6 @@ urlpatterns = [
     path("boletos/<int:boleto_id>/pagar/pix/", views.marcar_pago_pix, name="marcar_pago_pix"),
     path("boletos/<int:boleto_id>/pagar/dinheiro/", views.marcar_pago_dinheiro, name="marcar_pago_dinheiro"),
     path("boletos/<int:boleto_id>/cancelar/", views.cancelar_boleto, name="cancelar_boleto"),
+    path("enviaboleto/", views.enviar_boletos_whatsapp, name="enviar_boletos_whatsapp"),
+    path("enviaboletos/", views.enviar_boletos_whatsapp, name="enviar_boletos_whatsapp_plural"),
 ]

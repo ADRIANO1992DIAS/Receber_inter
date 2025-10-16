@@ -4,8 +4,8 @@
     <div class="flex flex-col gap-2">
       <h2 class="text-xl font-semibold text-slate-900">Importar planilha de clientes</h2>
       <p class="text-sm text-slate-500">
-        Envie um arquivo Excel (.xlsx) com as colunas obrigatorias: Nome, CPF/CNPJ, Valor nominal e dataVencimento.
-        Colunas como E-mail, Telefone, Endereco, CEP e UF tambem sao importadas quando presentes.
+        Envie um arquivo Excel (.xlsx) com as colunas obrigatórias: Nome, CPF/CNPJ, Valor nominal e data de vencimento.
+        Colunas como E-mail, Telefone, Endereço, CEP e UF também são importadas quando presentes.
       </p>
       <div>
         <a
@@ -29,7 +29,7 @@
         <label class="block text-sm font-medium text-slate-600">{{ form.arquivo.label }}</label>
         {{ form.arquivo }}
         <p class="mt-1 text-xs text-slate-500">
-          A primeira linha da planilha deve conter os titulos (cabecalhos). Cada linha representa um cliente.
+          A primeira linha da planilha deve conter os títulos (cabeçalhos). Cada linha representa um cliente.
         </p>
         {% if form.arquivo.errors %}
           <p class="mt-1 text-xs font-medium text-rose-600">{{ form.arquivo.errors|striptags }}</p>

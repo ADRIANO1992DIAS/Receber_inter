@@ -1,6 +1,8 @@
 
 from django.db import models
 
+from .constants import DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE
+
 UF_CHOICES = [
     ('AC','AC'),('AL','AL'),('AP','AP'),('AM','AM'),('BA','BA'),('CE','CE'),
     ('DF','DF'),('ES','ES'),('GO','GO'),('MA','MA'),('MT','MT'),('MS','MS'),
@@ -110,3 +112,23 @@ class ConciliacaoAlias(models.Model):
 
     def __str__(self):
         return f"{self.descricao_chave} -> {self.cliente.nome}"
+
+
+class WhatsappConfig(models.Model):
+    saudacao_template = models.TextField(default=DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Configuracao de WhatsApp"
+        verbose_name_plural = "Configuracoes de WhatsApp"
+
+    def __str__(self):
+        return "Configuracao principal do WhatsApp"
+
+    @classmethod
+    def get_solo(cls):
+        obj, _ = cls.objects.get_or_create(
+            pk=1,
+            defaults={"saudacao_template": DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE},
+        )
+        return obj

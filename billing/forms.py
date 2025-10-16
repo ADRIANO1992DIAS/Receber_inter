@@ -2,7 +2,7 @@ from django import forms
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from .models import Cliente, Boleto, ConciliacaoLancamento
+from .models import Cliente, Boleto, ConciliacaoLancamento, WhatsappConfig
 
 
 def _coerce_int_or_none(value):
@@ -215,3 +215,22 @@ class ConciliacaoLinkForm(forms.Form):
         cleaned["lancamento"] = lancamento
         cleaned["boleto"] = boleto
         return cleaned
+
+
+class WhatsappMensagemForm(forms.ModelForm):
+    class Meta:
+        model = WhatsappConfig
+        fields = ["saudacao_template"]
+        labels = {"saudacao_template": "Mensagem inicial"}
+        widgets = {
+            "saudacao_template": forms.Textarea(
+                attrs={
+                    "rows": 4,
+                    "class": (
+                        "mt-1 block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 "
+                        "text-sm text-slate-700 shadow-sm focus:border-emerald-300 "
+                        "focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    ),
+                }
+            )
+        }
