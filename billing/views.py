@@ -89,6 +89,8 @@ CLIENTE_IMPORT_HEADER_ALIASES: Dict[str, str] = {
 }
 
 CLIENTE_IMPORT_REQUIRED = {"nome", "cpfCnpj", "valorNominal", "dataVencimento"}
+DEFAULT_BOLETO_DDD = "85"
+DEFAULT_BOLETO_TELEFONE = "985134478"
 
 
 def _normalizar_header(valor: Optional[str]) -> str:
@@ -255,19 +257,19 @@ def _interpretar_status_cobranca(payload: Dict[str, Any]) -> Dict[str, Optional[
     for status_bruto in status_candidatos:
         status_normalizado = _normalize(status_bruto)
         if any(chave in status_normalizado for chave in status_pago_tokens):
-            novo_status = "pago"
+            novo_status = Boleto.STATUS_PAGO
             break
         if any(chave in status_normalizado for chave in status_cancelamento_tokens):
-            novo_status = "cancelado"
+            novo_status = Boleto.STATUS_CANCELADO
             break
         if any(chave in status_normalizado for chave in status_atraso_tokens):
-            novo_status = "atrasado"
+            novo_status = Boleto.STATUS_ATRASADO
             continue
         if not novo_status and status_normalizado:
             if any(chave in status_normalizado for chave in status_aberto_tokens):
-                novo_status = "emitido"
+                novo_status = Boleto.STATUS_EMITIDO
             else:
-                novo_status = "emitido"
+                novo_status = Boleto.STATUS_EMITIDO
 
     def _valor_para_decimal(valor: Any) -> Optional[Decimal]:
         if valor in (None, "", "None"):
@@ -294,7 +296,7 @@ def _interpretar_status_cobranca(payload: Dict[str, Any]) -> Dict[str, Optional[
     for valor_bruto in valores_para_checar:
         valor_convertido = _valor_para_decimal(valor_bruto)
         if valor_convertido and valor_convertido > Decimal("0"):
-            novo_status = "pago"
+            novo_status = Boleto.STATUS_PAGO
             break
 
     if not novo_status:
@@ -303,13 +305,13 @@ def _interpretar_status_cobranca(payload: Dict[str, Any]) -> Dict[str, Optional[
             if situacao_pagamento:
                 situacao_normalizada = _normalize(str(situacao_pagamento))
                 if any(chave in situacao_normalizada for chave in status_pago_tokens):
-                    novo_status = "pago"
+                    novo_status = Boleto.STATUS_PAGO
                     break
                 if any(chave in situacao_normalizada for chave in status_cancelamento_tokens):
-                    novo_status = "cancelado"
+                    novo_status = Boleto.STATUS_CANCELADO
                     break
                 if any(chave in situacao_normalizada for chave in status_atraso_tokens):
-                    novo_status = "atrasado"
+                    novo_status = Boleto.STATUS_ATRASADO
                     break
 
     data_pagamento_bruta: Optional[str] = None
@@ -422,12 +424,12 @@ def dashboard(request):
             boletos_qs = boletos_qs.filter(data_vencimento__day__in=dias_validos)
 
     total_gerados = boletos_qs.count()
-    total_recebidos = boletos_qs.filter(status="pago").count()
-    total_cancelados = boletos_qs.filter(status="cancelado").count()
+    total_recebidos = boletos_qs.filter(status=Boleto.STATUS_PAGO).count()
+    total_cancelados = boletos_qs.filter(status=Boleto.STATUS_CANCELADO).count()
     total_valor_gerado = boletos_qs.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
-    boletos_recebidos = boletos_qs.filter(status="pago")
+    boletos_recebidos = boletos_qs.filter(status=Boleto.STATUS_PAGO)
     total_valor_recebido = boletos_recebidos.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
-    total_valor_cancelado = boletos_qs.filter(status="cancelado").aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
+    total_valor_cancelado = boletos_qs.filter(status=Boleto.STATUS_CANCELADO).aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
 
     boletos_pix = boletos_recebidos.filter(forma_pagamento="pix")
     boletos_dinheiro = boletos_recebidos.filter(forma_pagamento="dinheiro")
@@ -439,16 +441,35 @@ def dashboard(request):
     valor_pix_dinheiro = (valor_pix or Decimal("0")) + (valor_dinheiro or Decimal("0"))
 
     hoje = hoje or timezone.localdate()
-    boletos_em_aberto = boletos_qs.filter(status__in=["emitido", "novo", "atrasado"])
+    boletos_em_aberto = boletos_qs.filter(
+        status__in=[
+            Boleto.STATUS_EMITIDO,
+            Boleto.STATUS_NOVO,
+            Boleto.STATUS_ATRASADO,
+        ]
+    )
     boletos_atrasados = boletos_qs.filter(
-        Q(status="atrasado")
-        | (Q(status__in=["emitido", "novo"]) & Q(data_vencimento__lt=hoje))
+        Q(status=Boleto.STATUS_ATRASADO)
+        | (
+            Q(
+                status__in=[
+                    Boleto.STATUS_EMITIDO,
+                    Boleto.STATUS_NOVO,
+                ]
+            )
+            & Q(data_vencimento__lt=hoje)
+        )
     )
     total_em_atraso = boletos_atrasados.count()
     valor_em_atraso = boletos_atrasados.aggregate(total=Coalesce(Sum("valor"), Decimal("0")))["total"]
 
     boletos_a_receber = boletos_qs.filter(
-        Q(status__in=["emitido", "novo"])
+        Q(
+            status__in=[
+                Boleto.STATUS_EMITIDO,
+                Boleto.STATUS_NOVO,
+            ]
+        )
         & (Q(data_vencimento__gte=hoje) | Q(data_vencimento__isnull=True))
     )
     total_a_receber = boletos_a_receber.count()
@@ -639,7 +660,7 @@ def _carregar_conciliacao_csv(arquivo) -> Tuple[List["ConciliacaoLancamento"], i
             )
 
         boleto = lancamento.boleto
-        if boleto and boleto.status in ("emitido", "atrasado"):
+        if boleto and boleto.status in (Boleto.STATUS_EMITIDO, Boleto.STATUS_ATRASADO):
             _registrar_pagamento_manual(boleto, forma_pagamento="pix", data_pagamento=lancamento.data)
             if alias_cliente is None and descricao_chave:
                 ConciliacaoAlias.objects.get_or_create(
@@ -653,7 +674,7 @@ def _carregar_conciliacao_csv(arquivo) -> Tuple[List["ConciliacaoLancamento"], i
             boleto_auto = (
                 Boleto.objects.filter(
                     cliente=alias_cliente.cliente,
-                    status__in=["emitido", "atrasado"],
+                    status__in=[Boleto.STATUS_EMITIDO, Boleto.STATUS_ATRASADO],
                     valor=lancamento.valor,
                 )
                 .order_by("data_vencimento", "id")
@@ -751,7 +772,9 @@ def conciliacao(request):
                     messages.error(request, erro)
 
     boletos_elegiveis = list(
-        Boleto.objects.filter(status__in=["emitido", "atrasado"])
+        Boleto.objects.filter(
+            status__in=[Boleto.STATUS_EMITIDO, Boleto.STATUS_ATRASADO]
+        )
         .select_related("cliente")
         .order_by("cliente__nome", "competencia_ano", "competencia_mes")
     )
@@ -838,7 +861,14 @@ def conciliacao(request):
 @require_POST
 def sincronizar_boletos(request):
     boletos = list(
-        Boleto.objects.filter(status__in=["emitido", "novo", "erro", "atrasado"]).select_related("cliente")
+        Boleto.objects.filter(
+            status__in=[
+                Boleto.STATUS_EMITIDO,
+                Boleto.STATUS_NOVO,
+                Boleto.STATUS_ERRO,
+                Boleto.STATUS_ATRASADO,
+            ]
+        ).select_related("cliente")
     )
     if not boletos:
         messages.info(request, "Nenhum boleto pendente para sincronizar.")
@@ -851,7 +881,12 @@ def sincronizar_boletos(request):
         return redirect("boletos_list")
 
     atualizados = 0
-    contagem: Dict[str, int] = {"pago": 0, "cancelado": 0, "emitido": 0, "atrasado": 0}
+    contagem: Dict[str, int] = {
+        Boleto.STATUS_PAGO: 0,
+        Boleto.STATUS_CANCELADO: 0,
+        Boleto.STATUS_EMITIDO: 0,
+        Boleto.STATUS_ATRASADO: 0,
+    }
     sem_detalhe = 0
     erros: List[str] = []
 
@@ -908,7 +943,7 @@ def sincronizar_boletos(request):
                     boleto.valor = valor_remote
                     update_fields.add("valor")
 
-        if novo_status == "pago":
+        if novo_status == Boleto.STATUS_PAGO:
             if data_pagamento and boleto.data_pagamento != data_pagamento:
                 boleto.data_pagamento = data_pagamento
                 update_fields.add("data_pagamento")
@@ -931,14 +966,16 @@ def sincronizar_boletos(request):
 
     if atualizados:
         resumo_itens = []
-        if contagem.get("pago"):
-            resumo_itens.append(f"recebidos: {contagem['pago']}")
-        if contagem.get("cancelado"):
-            resumo_itens.append(f"cancelados: {contagem['cancelado']}")
-        if contagem.get("atrasado"):
-            resumo_itens.append(f"atrasados: {contagem['atrasado']}")
-        if contagem.get("emitido"):
-            resumo_itens.append(f"em aberto: {contagem['emitido']}")
+        resumir_status = {
+            Boleto.STATUS_PAGO: "recebidos",
+            Boleto.STATUS_CANCELADO: "cancelados",
+            Boleto.STATUS_ATRASADO: "atrasados",
+            Boleto.STATUS_EMITIDO: "em aberto",
+        }
+        for status_codigo, descricao in resumir_status.items():
+            quantidade = contagem.get(status_codigo)
+            if quantidade:
+                resumo_itens.append(f"{descricao}: {quantidade}")
         resumo = ", ".join(resumo_itens)
         mensagem = f"Sincronizacao concluida. {atualizados} boleto(s) atualizado(s)."
         if resumo:
@@ -1353,8 +1390,8 @@ def gerar_boletos(request):
                     "nome": cli.nome,
                     "cpfCnpj": cli.cpfCnpj,
                     "email": cli.email,
-                    "ddd": cli.ddd,
-                    "telefone": cli.telefone,
+                    "ddd": DEFAULT_BOLETO_DDD,
+                    "telefone": DEFAULT_BOLETO_TELEFONE,
                     "endereco": cli.endereco,
                     "numero": cli.numero,
                     "complemento": cli.complemento,
@@ -1370,11 +1407,11 @@ def gerar_boletos(request):
                     boleto.codigo_barras = result.get("codigoBarras","")
                     boleto.tx_id = result.get("txId","")
                     boleto.codigo_solicitacao = result.get("codigoSolicitacao","")
-                    boleto.status = "emitido"
+                    boleto.status = Boleto.STATUS_EMITIDO
                     boleto.save()
 
                 except Exception as e:
-                    boleto.status = "erro"
+                    boleto.status = Boleto.STATUS_ERRO
                     boleto.erro_msg = str(e)
                     boleto.save()
                     messages.error(request, f"Erro ao emitir boleto de {cli.nome}: {e}")
@@ -1495,7 +1532,7 @@ def marcar_pago_dinheiro(request, boleto_id: int):
 def _registrar_pagamento_manual(
     boleto: Boleto, forma_pagamento: str, data_pagamento: Optional[dt.date] = None
 ) -> None:
-    boleto.status = "pago"
+    boleto.status = Boleto.STATUS_PAGO
     boleto.forma_pagamento = forma_pagamento or ""
     boleto.data_pagamento = data_pagamento or dt.date.today()
     boleto.save(update_fields=["status", "forma_pagamento", "data_pagamento"])
@@ -1515,7 +1552,7 @@ def cancelar_boleto(request, boleto_id: int):
         boleto.save(update_fields=["erro_msg"])
         messages.error(request, f"Falha ao cancelar via API: {exc}")
     else:
-        boleto.status = "cancelado"
+        boleto.status = Boleto.STATUS_CANCELADO
         boleto.erro_msg = ""
         boleto.save(update_fields=["status", "erro_msg"])
         situacao = resultado.get("situacao") or resultado.get("status")
@@ -1536,7 +1573,7 @@ def enviar_boletos_whatsapp(request):
     mensagem_form = WhatsappMensagemForm(instance=config)
 
     boletos_queryset = (
-        Boleto.objects.filter(status="emitido")
+        Boleto.objects.filter(status=Boleto.STATUS_EMITIDO)
         .select_related("cliente")
         .order_by("data_vencimento", "id")
     )
@@ -1586,12 +1623,47 @@ def enviar_boletos_whatsapp(request):
             else:
                 boletos_alvo = boletos
 
+            boletos_validos: List[Boleto] = []
+            boletos_invalidos: List[Boleto] = []
             for boleto in boletos_alvo:
+                if boleto.status != Boleto.STATUS_EMITIDO:
+                    boletos_invalidos.append(boleto)
+                    continue
+                boletos_validos.append(boleto)
+
+            if boletos_invalidos:
+                ignorados_nomes = ", ".join(boleto.cliente.nome for boleto in boletos_invalidos)
+                messages.warning(
+                    request,
+                    f"Alguns boletos foram ignorados por nao estarem com status emitido: {ignorados_nomes}.",
+                )
+
+            for boleto in boletos_validos:
                 resultado = dispatch_boleto_via_whatsapp(
                     boleto,
                     saudacao_template=config.saudacao_template,
                 )
                 resultados.append(resultado)
+
+                detalhe_envio = _detalhe_envio(resultado)
+                if resultado.get("ok"):
+                    novo_status = Boleto.WHATSAPP_STATUS_ENVIADO
+                else:
+                    novo_status = Boleto.WHATSAPP_STATUS_ERRO
+                boleto.whatsapp_status = novo_status
+                boleto.whatsapp_status_detail = detalhe_envio or ""
+                boleto.whatsapp_status_updated_at = timezone.now()
+                boleto.save(
+                    update_fields=[
+                        "whatsapp_status",
+                        "whatsapp_status_detail",
+                        "whatsapp_status_updated_at",
+                    ]
+                )
+
+                chave_boleto = str(boleto.id)
+                session_status_map[chave_boleto] = boleto.get_whatsapp_status_display()
+                session_detail_map[chave_boleto] = boleto.whatsapp_status_detail
 
             enviados_sucesso = sum(1 for resultado in resultados if resultado.get("ok"))
             erros_envio = sum(1 for resultado in resultados if not resultado.get("ok"))
@@ -1612,19 +1684,27 @@ def enviar_boletos_whatsapp(request):
         request.session["boletos_envio_status"] = session_status_map
         request.session["boletos_envio_detail"] = session_detail_map
 
-    status_map: Dict[int, str] = {
-        boleto.id: session_status_map.get(str(boleto.id), "A enviar")
-        for boleto in boletos
-    }
+    status_map: Dict[int, str] = {}
+    for boleto in boletos:
+        chave = str(boleto.id)
+        status_label = session_status_map.get(chave)
+        if not status_label:
+            if boleto.whatsapp_status:
+                status_label = boleto.get_whatsapp_status_display()
+            else:
+                status_label = "A enviar"
+        status_map[boleto.id] = status_label
 
     tabela_boletos: List[Dict[str, Any]] = []
     for boleto in boletos:
+        if boleto.status != Boleto.STATUS_EMITIDO:
+            continue
         cliente = boleto.cliente
         telefone_whatsapp = format_whatsapp_phone(cliente)
         telefone_display = telefone_whatsapp.split("@")[0] if telefone_whatsapp else ""
         bloqueios: List[str] = []
         if not telefone_whatsapp:
-            bloqueios.append("Telefone do cliente inválido ou ausente.")
+            bloqueios.append("Telefone do cliente invalido ou ausente.")
         if not boleto.pdf:
             bloqueios.append("PDF do boleto ainda não foi baixado.")
         tabela_boletos.append(
@@ -1643,7 +1723,10 @@ def enviar_boletos_whatsapp(request):
                 "status_envio": status_map.get(boleto.id, "A enviar"),
                 "pode_enviar": not bloqueios,
                 "bloqueios": bloqueios,
-                "detalhe_envio": session_detail_map.get(str(boleto.id), ""),
+                "detalhe_envio": session_detail_map.get(
+                    str(boleto.id),
+                    boleto.whatsapp_status_detail or "",
+                ),
             }
         )
 

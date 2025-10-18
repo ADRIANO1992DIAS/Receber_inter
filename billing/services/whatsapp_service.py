@@ -5,6 +5,8 @@ from typing import Dict, Optional, Any, List
 
 import requests
 
+from django.utils import timezone
+
 from billing.constants import DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE
 from billing.models import Boleto, WhatsappConfig
 
@@ -134,8 +136,17 @@ def dispatch_boleto_via_whatsapp(
         except Exception:
             saudacao_template = DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE
 
+    saudacao = _time_based_saudacao()
+    template_context = {
+        "vencimento": vencimento,
+        "valor": valor,
+        "cliente": cliente.nome,
+        "ven": vencimento,
+        "va": valor,
+        "saudacao": saudacao,
+    }
     try:
-        mensagem_inicial = saudacao_template.format(vencimento=vencimento, valor=valor, cliente=cliente.nome)
+        mensagem_inicial = saudacao_template.format(**template_context)
     except KeyError as exc:
         return {
             "boleto_id": boleto.id,
@@ -163,3 +174,11 @@ def dispatch_boleto_via_whatsapp(
     return {"boleto_id": boleto.id, "cliente": cliente.nome, "ok": True, "phone": phone, "steps": steps}
 
 
+def _time_based_saudacao() -> str:
+    agora = timezone.localtime()
+    hora = agora.hour
+    if 0 <= hora < 12:
+        return "Bom dia!"
+    if 12 <= hora < 18:
+        return "Boa tarde!"
+    return "Boa noite!"

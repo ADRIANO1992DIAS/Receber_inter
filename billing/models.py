@@ -1,7 +1,7 @@
 
 from django.db import models
 
-from .constants import DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE
+from .constants import DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE, LEGACY_WHATSAPP_SAUDACAO_TEMPLATES
 
 UF_CHOICES = [
     ('AC','AC'),('AL','AL'),('AP','AP'),('AM','AM'),('BA','BA'),('CE','CE'),
@@ -32,18 +32,32 @@ class Cliente(models.Model):
 
 
 class Boleto(models.Model):
+    STATUS_NOVO = "novo"
+    STATUS_EMITIDO = "emitido"
+    STATUS_PAGO = "pago"
+    STATUS_CANCELADO = "cancelado"
+    STATUS_ERRO = "erro"
+    STATUS_ATRASADO = "atrasado"
     STATUS_CHOICES = [
-        ('novo', 'Novo'),
-        ('emitido', 'Emitido'),
-        ('pago', 'Pago'),
-        ('cancelado', 'Cancelado'),
-        ('erro', 'Erro'),
-        ('atrasado', 'Atrasado'),
+        (STATUS_NOVO, "Novo"),
+        (STATUS_EMITIDO, "Emitido"),
+        (STATUS_PAGO, "Pago"),
+        (STATUS_CANCELADO, "Cancelado"),
+        (STATUS_ERRO, "Erro"),
+        (STATUS_ATRASADO, "Atrasado"),
     ]
     FORMA_PAGAMENTO_CHOICES = [
         ("", "Nao informado"),
         ("pix", "PIX"),
         ("dinheiro", "Dinheiro"),
+    ]
+    WHATSAPP_STATUS_PENDENTE = "pendente"
+    WHATSAPP_STATUS_ENVIADO = "enviado"
+    WHATSAPP_STATUS_ERRO = "erro"
+    WHATSAPP_STATUS_CHOICES = [
+        (WHATSAPP_STATUS_PENDENTE, "A enviar"),
+        (WHATSAPP_STATUS_ENVIADO, "Enviado"),
+        (WHATSAPP_STATUS_ERRO, "Erro"),
     ]
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='boletos')
     competencia_ano = models.PositiveSmallIntegerField()
@@ -55,7 +69,7 @@ class Boleto(models.Model):
     codigo_barras = models.CharField(max_length=100, blank=True)
     tx_id = models.CharField(max_length=100, blank=True)
     codigo_solicitacao = models.CharField(max_length=100, blank=True)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='novo')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_NOVO)
     erro_msg = models.TextField(blank=True)
     pdf = models.FileField(upload_to='boletos/', blank=True, null=True)
     data_pagamento = models.DateField(blank=True, null=True)
@@ -65,6 +79,14 @@ class Boleto(models.Model):
         blank=True,
         default="",
     )
+    whatsapp_status = models.CharField(
+        max_length=20,
+        choices=WHATSAPP_STATUS_CHOICES,
+        default=WHATSAPP_STATUS_PENDENTE,
+        blank=True,
+    )
+    whatsapp_status_detail = models.TextField(blank=True)
+    whatsapp_status_updated_at = models.DateTimeField(blank=True, null=True)
 
     criado_em = models.DateTimeField(auto_now_add=True)
 
@@ -131,4 +153,7 @@ class WhatsappConfig(models.Model):
             pk=1,
             defaults={"saudacao_template": DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE},
         )
+        if obj.saudacao_template in LEGACY_WHATSAPP_SAUDACAO_TEMPLATES:
+            obj.saudacao_template = DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE
+            obj.save(update_fields=["saudacao_template"])
         return obj
