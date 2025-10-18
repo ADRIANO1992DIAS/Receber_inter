@@ -28,6 +28,71 @@
       </div>
     </div>
 
+    <form method="get" class="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-5">
+      <div class="flex flex-col gap-1 md:col-span-2">
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-nome">Nome</label>
+        <input
+          class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          type="text"
+          id="filtro-nome"
+          name="nome"
+          placeholder="Buscar por nome"
+          value="{{ filtros.nome|default:'' }}"
+        />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-dia">Dia venc.</label>
+        <input
+          class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          type="number"
+          min="1"
+          max="31"
+          id="filtro-dia"
+          name="dia_vencimento"
+          placeholder="Ex.: 10"
+          value="{{ filtros.dia_vencimento|default:'' }}"
+        />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-valor-min">Valor min.</label>
+        <input
+          class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          type="text"
+          id="filtro-valor-min"
+          name="valor_min"
+          placeholder="Ex.: 100,00"
+          value="{{ filtros.valor_min|default:'' }}"
+        />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="filtro-valor-max">Valor max.</label>
+        <input
+          class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200"
+          type="text"
+          id="filtro-valor-max"
+          name="valor_max"
+          placeholder="Ex.: 500,00"
+          value="{{ filtros.valor_max|default:'' }}"
+        />
+      </div>
+      <div class="flex items-end gap-2 md:justify-end">
+        <button
+          class="inline-flex items-center justify-center rounded-full bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          type="submit"
+        >
+          Aplicar filtros
+        </button>
+        {% if filtros_ativos|default:False %}
+          <a
+            class="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand-300 hover:text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+            href="{% url 'clientes_list' %}"
+          >
+            Limpar
+          </a>
+        {% endif %}
+      </div>
+    </form>
+
     <div class="hidden md:block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <table class="min-w-full divide-y divide-slate-200 text-sm">
         <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -36,8 +101,7 @@
             <th class="px-4 py-3">CPF/CNPJ</th>
             <th class="px-4 py-3">Valor</th>
             <th class="px-4 py-3">Venc.</th>
-            <th class="px-4 py-3">E-mail</th>
-            <th class="px-4 py-3">Cidade</th>
+            <th class="px-4 py-3">Telefone</th>
             <th class="px-4 py-3">Ações</th>
           </tr>
         </thead>
@@ -48,8 +112,14 @@
               <td class="px-4 py-3">{{ c.cpfCnpj }}</td>
               <td class="px-4 py-3 font-semibold text-slate-900">R$ {{ c.valorNominal }}</td>
               <td class="px-4 py-3">{{ c.dataVencimento }}</td>
-              <td class="px-4 py-3">{{ c.email }}</td>
-              <td class="px-4 py-3">{{ c.cidade }}/{{ c.uf }}</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center gap-1 whitespace-nowrap">
+                  {% if c.ddd %}
+                    <span>{{ c.ddd }}</span>
+                  {% endif %}
+                  <span>{{ c.telefone|default:'-' }}</span>
+                </span>
+              </td>
               <td class="px-4 py-3">
                 <div class="flex flex-wrap gap-2">
                   <a
@@ -96,12 +166,15 @@
               <dd>{{ c.dataVencimento }}</dd>
             </div>
             <div>
-              <dt class="font-semibold text-slate-500">E-mail</dt>
-              <dd>{{ c.email|default:"-" }}</dd>
-            </div>
-            <div>
-              <dt class="font-semibold text-slate-500">Cidade / UF</dt>
-              <dd>{{ c.cidade|default:"-" }}/{{ c.uf|default:"--" }}</dd>
+              <dt class="font-semibold text-slate-500">Telefone</dt>
+              <dd>
+                <span class="inline-flex items-center gap-1 whitespace-nowrap">
+                  {% if c.ddd %}
+                    <span>{{ c.ddd }}</span>
+                  {% endif %}
+                  <span>{{ c.telefone|default:"-" }}</span>
+                </span>
+              </dd>
             </div>
           </dl>
           <footer class="mt-4 flex flex-wrap gap-2">

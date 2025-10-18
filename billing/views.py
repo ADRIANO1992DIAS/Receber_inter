@@ -346,8 +346,69 @@ def home(request):
 
 @login_required
 def clientes_list(request):
-    clientes = Cliente.objects.all().order_by("nome")
-    return render(request, "billing/clientes_list.html", {"clientes": clientes})
+    clientes_qs = Cliente.objects.all()
+
+    nome_param = request.GET.get("nome", "").strip()
+    dia_param = request.GET.get("dia_vencimento", "").strip()
+    valor_min_param = request.GET.get("valor_min", "").strip()
+    valor_max_param = request.GET.get("valor_max", "").strip()
+
+    if nome_param:
+        clientes_qs = clientes_qs.filter(nome__icontains=nome_param)
+
+    dia_vencimento = None
+    if dia_param:
+        try:
+            dia_vencimento = int(dia_param)
+        except ValueError:
+            dia_param = ""
+        else:
+            if 1 <= dia_vencimento <= 31:
+                clientes_qs = clientes_qs.filter(dataVencimento=dia_vencimento)
+            else:
+                dia_param = ""
+
+    valor_min = None
+    if valor_min_param:
+        texto = valor_min_param.replace("R$", "").replace(" ", "")
+        if texto.count(",") == 1 and "." in texto:
+            texto = texto.replace(".", "").replace(",", ".")
+        else:
+            texto = texto.replace(",", ".")
+        try:
+            valor_min = Decimal(texto)
+        except (InvalidOperation, ValueError):
+            valor_min_param = ""
+        else:
+            clientes_qs = clientes_qs.filter(valorNominal__gte=valor_min)
+
+    valor_max = None
+    if valor_max_param:
+        texto = valor_max_param.replace("R$", "").replace(" ", "")
+        if texto.count(",") == 1 and "." in texto:
+            texto = texto.replace(".", "").replace(",", ".")
+        else:
+            texto = texto.replace(",", ".")
+        try:
+            valor_max = Decimal(texto)
+        except (InvalidOperation, ValueError):
+            valor_max_param = ""
+        else:
+            clientes_qs = clientes_qs.filter(valorNominal__lte=valor_max)
+
+    clientes = clientes_qs.order_by("nome")
+    filtros_aplicados = {
+        "nome": nome_param,
+        "dia_vencimento": dia_param,
+        "valor_min": valor_min_param,
+        "valor_max": valor_max_param,
+    }
+    filtros_ativos = any(filtros_aplicados.values())
+    return render(
+        request,
+        "billing/clientes_list.html",
+        {"clientes": clientes, "filtros": filtros_aplicados, "filtros_ativos": filtros_ativos},
+    )
 
 
 @login_required
