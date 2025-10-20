@@ -1282,7 +1282,7 @@ def cliente_delete(request, cliente_id: int):
 
 @login_required
 def boletos_list(request):
-    boletos = Boleto.objects.select_related("cliente").order_by("-criado_em")
+    boletos = Boleto.objects.select_related("cliente")
 
     mes_param = request.GET.get("mes", "").strip()
     ano_param = request.GET.get("ano", "").strip()
@@ -1364,6 +1364,8 @@ def boletos_list(request):
         for dia in dias_disponiveis
         if dia is not None
     ]
+
+    boletos = boletos.order_by("cliente__nome", "-criado_em")
 
     context = {
         "boletos": boletos,
