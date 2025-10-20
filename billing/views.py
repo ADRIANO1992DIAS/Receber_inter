@@ -1321,9 +1321,14 @@ def boletos_list(request):
     status_opcoes = [{"value": "", "label": "Todos"}] + [
         {"value": value, "label": label} for value, label in status_choices_visiveis
     ]
+    status_opcoes.append({"value": "pago_pix", "label": "Pago (PIX)"})
+    status_choices_map["pago_pix"] = "Pago (PIX)"
 
     status_selecionado = ""
-    if status_param and status_param in status_choices_map:
+    if status_param == "pago_pix":
+        boletos = boletos.filter(status=Boleto.STATUS_PAGO, forma_pagamento="pix")
+        status_selecionado = status_param
+    elif status_param and status_param in status_choices_map:
         boletos = boletos.filter(status=status_param)
         status_selecionado = status_param
 
