@@ -51,6 +51,14 @@ def _montar_seu_numero(cliente_dict: Dict[str, Any], data_venc: dt.date) -> str:
     return resultado or sufixo[-15:]
 
 
+def _truncate_text(value: Any, limit: int) -> str:
+    text = str(value or "").strip()
+    text = text.replace("\r", " ").replace("\n", " ")
+    if len(text) <= limit:
+        return text
+    return text[:limit]
+
+
 class InterService:
     def __init__(self) -> None:
         self.client_id = os.getenv("CLIENT_ID")
@@ -118,7 +126,7 @@ class InterService:
             "ddd": ddd,
             "telefone": telefone,
             "numero": str(dados.get("numero", "")),
-            "complemento": str(dados.get("complemento", "")),
+            "complemento": _truncate_text(dados.get("complemento", ""), 30),
         }
 
     def emitir_boleto(self, cliente_dict: Dict[str, Any], data_venc: dt.date) -> Dict[str, Any]:
