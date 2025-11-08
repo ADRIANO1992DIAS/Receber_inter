@@ -352,6 +352,7 @@ def clientes_list(request):
     dia_param = request.GET.get("dia_vencimento", "").strip()
     valor_min_param = request.GET.get("valor_min", "").strip()
     valor_max_param = request.GET.get("valor_max", "").strip()
+    status_param = request.GET.get("status", "").strip().lower()
 
     if nome_param:
         clientes_qs = clientes_qs.filter(nome__icontains=nome_param)
@@ -396,12 +397,20 @@ def clientes_list(request):
         else:
             clientes_qs = clientes_qs.filter(valorNominal__lte=valor_max)
 
+    if status_param == "ativos":
+        clientes_qs = clientes_qs.filter(ativo=True)
+    elif status_param == "inativos":
+        clientes_qs = clientes_qs.filter(ativo=False)
+    else:
+        status_param = ""
+
     clientes = clientes_qs.order_by("nome")
     filtros_aplicados = {
         "nome": nome_param,
         "dia_vencimento": dia_param,
         "valor_min": valor_min_param,
         "valor_max": valor_max_param,
+        "status": status_param,
     }
     filtros_ativos = any(filtros_aplicados.values())
     return render(

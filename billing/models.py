@@ -16,6 +16,7 @@ class Cliente(models.Model):
     dataVencimento = models.PositiveSmallIntegerField('Dia do vencimento (1..31)')
     nome = models.CharField('Nome', max_length=200)
     cpfCnpj = models.CharField('CPF/CNPJ', max_length=18)
+    ativo = models.BooleanField('Ativo', default=True)
     email = models.EmailField('E-mail', blank=True)
     ddd = models.CharField('DDD', max_length=3, blank=True)
     telefone = models.CharField('Telefone', max_length=20, blank=True)

@@ -39,6 +39,16 @@ class SelecionarClientesForm(forms.Form):
         choices=[],
         label="Filtrar por dia do vencimento",
     )
+    nome = forms.CharField(
+        required=False,
+        label="Filtrar por nome",
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "Buscar por nome",
+                "class": "w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200",
+            }
+        ),
+    )
     clientes = forms.ModelMultipleChoiceField(
         queryset=Cliente.objects.none(),
         widget=forms.CheckboxSelectMultiple,
@@ -57,7 +67,17 @@ class SelecionarClientesForm(forms.Form):
             self.fields["ano"].initial = self.initial.get("ano", self.fields["ano"].initial)
             self.fields["mes"].initial = self.initial.get("mes", self.fields["mes"].initial)
 
-        clientes_qs = Cliente.objects.all()
+        clientes_qs = Cliente.objects.filter(ativo=True)
+
+        nome_raw = ""
+        if self.is_bound:
+            nome_raw = (self.data.get(self.add_prefix("nome")) or "").strip()
+        else:
+            nome_raw = (self.initial.get("nome") or "").strip()
+        if nome_raw:
+            clientes_qs = clientes_qs.filter(nome__icontains=nome_raw)
+            self.initial["nome"] = nome_raw
+        self.fields["nome"].initial = nome_raw
 
         dias_disponiveis = (
             clientes_qs.order_by("dataVencimento")
@@ -121,6 +141,7 @@ class ClienteForm(forms.ModelForm):
         fields = [
             "nome",
             "cpfCnpj",
+            "ativo",
             "valorNominal",
             "dataVencimento",
             "email",
@@ -137,6 +158,11 @@ class ClienteForm(forms.ModelForm):
         widgets = {
             "dataVencimento": forms.NumberInput(attrs={"min": 1, "max": 31}),
             "valorNominal": forms.NumberInput(attrs={"step": "0.01"}),
+            "ativo": forms.CheckboxInput(
+                attrs={
+                    "class": "h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500",
+                }
+            ),
         }
 
 
