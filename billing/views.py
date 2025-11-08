@@ -1003,6 +1003,10 @@ def sincronizar_boletos(request):
             boleto.linha_digitavel = detalhe["linhaDigitavel"]
             update_fields.add("linha_digitavel")
 
+        if detalhe.get("codigoBarras") and detalhe["codigoBarras"] != boleto.codigo_barras:
+            boleto.codigo_barras = detalhe["codigoBarras"]
+            update_fields.add("codigo_barras")
+
         if detalhe.get("valorNominal"):
             try:
                 valor_remote = Decimal(str(detalhe["valorNominal"]))

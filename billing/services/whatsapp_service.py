@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from billing.constants import DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE
 from billing.models import Boleto, WhatsappConfig
+from billing.services.inter_service import InterService
 
 MESSAGE_URL = os.getenv("WHATSAPP_MESSAGE_URL", "http://localhost:3000/send/message")
 FILE_URL = os.getenv("WHATSAPP_FILE_URL", "http://localhost:3000/send/file")
@@ -105,6 +106,61 @@ def _format_valor(valor) -> str:
         return str(valor)
 
 
+def _refrescar_codigos_boleto(boleto: Boleto) -> str:
+    """
+    Busca detalhes no Inter quando o boleto ainda nao possui linha digitavel/codigo de barras.
+    """
+    identificadores = [
+        (boleto.nosso_numero, "nosso_numero"),
+        (boleto.codigo_solicitacao, "codigo_solicitacao"),
+        (boleto.tx_id, "tx_id"),
+    ]
+    try:
+        inter = InterService()
+    except Exception:
+        return ""
+
+    for identificador, campo in identificadores:
+        if not identificador:
+            continue
+        try:
+            detalhe = inter.recuperar_cobranca_detalhada(identificador, campo=campo)
+        except Exception:
+            detalhe = None
+        if not detalhe:
+            continue
+
+        update_fields: List[str] = []
+        codigo_barras = detalhe.get("codigoBarras") or ""
+        linha_digitavel = detalhe.get("linhaDigitavel") or ""
+        nosso_numero = detalhe.get("nossoNumero") or ""
+        codigo_solicitacao = detalhe.get("codigoSolicitacao") or ""
+        tx_id = detalhe.get("txId") or detalhe.get("txid") or ""
+
+        if codigo_barras and codigo_barras != boleto.codigo_barras:
+            boleto.codigo_barras = codigo_barras
+            update_fields.append("codigo_barras")
+        if linha_digitavel and linha_digitavel != boleto.linha_digitavel:
+            boleto.linha_digitavel = linha_digitavel
+            update_fields.append("linha_digitavel")
+        if nosso_numero and nosso_numero != boleto.nosso_numero:
+            boleto.nosso_numero = nosso_numero
+            update_fields.append("nosso_numero")
+        if codigo_solicitacao and codigo_solicitacao != boleto.codigo_solicitacao:
+            boleto.codigo_solicitacao = codigo_solicitacao
+            update_fields.append("codigo_solicitacao")
+        if tx_id and tx_id != boleto.tx_id:
+            boleto.tx_id = tx_id
+            update_fields.append("tx_id")
+
+        if update_fields:
+            boleto.save(update_fields=update_fields)
+
+        return boleto.codigo_barras or boleto.linha_digitavel or ""
+
+    return ""
+
+
 def dispatch_boleto_via_whatsapp(
     boleto: Boleto,
     *,
@@ -164,6 +220,16 @@ def dispatch_boleto_via_whatsapp(
     steps.append({"tipo": "arquivo", "conteudo": str(pdf_path), **arquivo_resultado})
     if not arquivo_resultado.get("ok"):
         return {"boleto_id": boleto.id, "cliente": cliente.nome, "ok": False, "phone": phone, "steps": steps}
+
+    if not codigo:
+        codigo = _refrescar_codigos_boleto(boleto)
+        steps.append(
+            {
+                "tipo": "atualizacao_codigo",
+                "conteudo": "recuperar_detalhe_inter" if codigo else "nao_disponivel",
+                "ok": bool(codigo),
+            }
+        )
 
     if codigo:
         codigo_resultado = send_whatsapp_message(phone, codigo)
