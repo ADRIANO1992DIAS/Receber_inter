@@ -11,8 +11,9 @@ from billing.constants import DEFAULT_WHATSAPP_SAUDACAO_TEMPLATE
 from billing.models import Boleto, WhatsappConfig
 from billing.services.inter_service import InterService
 
-MESSAGE_URL = os.getenv("WHATSAPP_MESSAGE_URL", "http://localhost:3000/send/message")
-FILE_URL = os.getenv("WHATSAPP_FILE_URL", "http://localhost:3000/send/file")
+EVOLUTION_BASE_URL = os.getenv("EVOLUTION_BASE_URL", "http://localhost:8080")
+EVOLUTION_INSTANCE_ID = os.getenv("EVOLUTION_INSTANCE_ID", "")
+EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "")
 DEFAULT_PIX_KEY = os.getenv("WHATSAPP_PIX_KEY", "47.303.364/0001-04")
 
 
@@ -46,15 +47,44 @@ def format_whatsapp_phone(cliente) -> Optional[str]:
     return f"{digits}@s.whatsapp.net"
 
 
-def _post_json(
-    url: str,
+def _evolution_number(phone: str) -> Optional[str]:
+    if not phone:
+        return None
+    if "@s.whatsapp.net" in phone:
+        return phone.split("@", 1)[0]
+    return re.sub(r"\D", "", phone)
+
+
+def _evo_headers(as_json: bool) -> Dict[str, str]:
+    headers = {}
+    if EVOLUTION_API_KEY:
+        headers["apikey"] = EVOLUTION_API_KEY
+    if as_json:
+        headers["Content-Type"] = "application/json"
+    return headers
+
+
+def _evo_post(
+    endpoint: str,
     *,
     payload: Optional[Dict[str, Any]] = None,
     files: Optional[Dict[str, Any]] = None,
     as_json: bool = True,
 ) -> Dict[str, Any]:
+    if not EVOLUTION_INSTANCE_ID:
+        return {
+            "ok": False,
+            "error": "EVOLUTION_INSTANCE_ID nao configurado",
+            "status_code": None,
+            "payload": None,
+        }
+
+    base = EVOLUTION_BASE_URL.rstrip("/")
+    endpoint = endpoint.lstrip("/")
+    url = f"{base}/{endpoint}/{EVOLUTION_INSTANCE_ID}"
+
     try:
-        request_kwargs: Dict[str, Any] = {"timeout": 15}
+        request_kwargs: Dict[str, Any] = {"timeout": 20, "headers": _evo_headers(as_json and not files)}
         if files:
             request_kwargs["files"] = files
             request_kwargs["data"] = payload or {}
@@ -73,28 +103,39 @@ def _post_json(
     except ValueError:
         payload = {"raw": response.text}
 
-    ok = response.status_code == 200 and isinstance(payload, dict) and payload.get("code") == "SUCCESS"
+    ok = response.status_code in (200, 201) and isinstance(payload, dict) and not payload.get("error")
     return {
         "ok": ok,
         "status_code": response.status_code,
         "payload": payload,
+        "error": None if ok else payload.get("error") if isinstance(payload, dict) else "Resposta invalida",
     }
 
 
 def send_whatsapp_message(phone: str, message: str) -> Dict[str, Any]:
-    return _post_json(
-        MESSAGE_URL,
-        payload={"phone": phone, "message": message},
+    number = _evolution_number(phone)
+    if not number:
+        return {"ok": False, "error": "Numero invalido", "status_code": None, "payload": None}
+    return _evo_post(
+        "message/sendText",
+        payload={"number": number, "text": message},
         as_json=True,
     )
 
 
 def send_whatsapp_file(phone: str, file_path: Path) -> Dict[str, Any]:
+    number = _evolution_number(phone)
+    if not number:
+        return {"ok": False, "error": "Numero invalido", "status_code": None, "payload": None}
+    if not file_path.exists():
+        return {"ok": False, "error": f"Arquivo nao encontrado: {file_path}", "status_code": None, "payload": None}
     with file_path.open("rb") as fp:
-        return _post_json(
-            FILE_URL,
-            payload={"phone": phone},
-            files={"file": fp},
+        files = {"file": (file_path.name, fp, "application/pdf")}
+        data = {"number": number, "caption": Path(file_path).stem, "fileName": file_path.name}
+        return _evo_post(
+            "message/sendFile",
+            payload=data,
+            files=files,
             as_json=False,
         )
 
