@@ -1297,10 +1297,15 @@ def cliente_delete(request, cliente_id: int):
 def boletos_list(request):
     boletos = Boleto.objects.select_related("cliente")
 
-    mes_param = request.GET.get("mes", "").strip()
-    ano_param = request.GET.get("ano", "").strip()
+    hoje = timezone.localdate()
+    mes_param_raw = request.GET.get("mes") if "mes" in request.GET else str(hoje.month)
+    ano_param_raw = request.GET.get("ano") if "ano" in request.GET else str(hoje.year)
+
+    mes_param = (mes_param_raw or "").strip()
+    ano_param = (ano_param_raw or "").strip()
     status_param = request.GET.get("status", "").strip()
     dia_param = request.GET.get("dia", "").strip()
+    nome_param = request.GET.get("nome", "").strip()
 
     mes_selecionado = ""
     if mes_param:
@@ -1355,6 +1360,11 @@ def boletos_list(request):
             boletos = boletos.filter(data_vencimento__day=dia_valor)
             dia_selecionado = str(dia_valor)
 
+    nome_selecionado = ""
+    if nome_param:
+        boletos = boletos.filter(cliente__nome__icontains=nome_param)
+        nome_selecionado = nome_param
+
     anos_disponiveis = list(
         Boleto.objects.order_by("-competencia_ano")
         .values_list("competencia_ano", flat=True)
@@ -1390,6 +1400,7 @@ def boletos_list(request):
         "dia_selecionado": dia_selecionado,
         "status_opcoes": status_opcoes,
         "status_selecionado": status_selecionado,
+        "nome_selecionado": nome_selecionado,
     }
     return render(request, "billing/boletos_list.html", context)
 
