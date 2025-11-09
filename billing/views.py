@@ -160,10 +160,84 @@ def _arquivo_pdf_nome(boleto: Boleto) -> str:
     return f"{slug}.pdf"
 
 
-def _buscar_pdf_bytes(inter: InterService, boleto: Boleto) -> Optional[bytes]:
+def _pdf_existe_localmente(boleto: Boleto) -> bool:
+    """
+    Confirma se o arquivo referenciado pelo campo FileField realmente existe no storage.
+    """
+    if not boleto.pdf or not boleto.pdf.name:
+        return False
+    try:
+        return boleto.pdf.storage.exists(boleto.pdf.name)
+    except OSError:
+        return False
+
+
+def _preparar_boleto_para_reemissao(boleto: Boleto) -> None:
+    """
+    Limpa dados sensíveis de um boleto cancelado para permitir nova emissão.
+    """
     if boleto.pdf:
-        with boleto.pdf.open("rb") as stream:
-            return stream.read()
+        try:
+            boleto.pdf.delete(save=False)
+        except FileNotFoundError:
+            pass
+    boleto.pdf = None
+    boleto.nosso_numero = ""
+    boleto.linha_digitavel = ""
+    boleto.codigo_barras = ""
+    boleto.tx_id = ""
+    boleto.codigo_solicitacao = ""
+    boleto.status = Boleto.STATUS_NOVO
+    boleto.erro_msg = ""
+    boleto.data_pagamento = None
+    boleto.forma_pagamento = ""
+    boleto.whatsapp_status = Boleto.WHATSAPP_STATUS_PENDENTE
+    boleto.whatsapp_status_detail = ""
+    boleto.whatsapp_status_updated_at = None
+
+
+def _atualizar_codigo_barras_via_inter(inter: InterService, boleto: Boleto) -> None:
+    if boleto.codigo_barras:
+        return
+
+    identificadores = [
+        (boleto.nosso_numero, "nosso_numero"),
+        (boleto.codigo_solicitacao, "codigo_solicitacao"),
+        (boleto.tx_id, "tx_id"),
+    ]
+    for ident, campo in identificadores:
+        if not ident:
+            continue
+        try:
+            detalhe = inter.recuperar_cobranca_detalhada(ident, campo=campo)
+        except Exception:
+            continue
+        if not detalhe:
+            continue
+
+        campos_atualizados: List[str] = []
+        codigo = detalhe.get("codigoBarras")
+        if codigo and codigo != boleto.codigo_barras:
+            boleto.codigo_barras = codigo
+            campos_atualizados.append("codigo_barras")
+        linha_digitavel = detalhe.get("linhaDigitavel")
+        if linha_digitavel and not boleto.linha_digitavel:
+            boleto.linha_digitavel = linha_digitavel
+            campos_atualizados.append("linha_digitavel")
+
+        if campos_atualizados:
+            boleto.save(update_fields=campos_atualizados)
+            return
+
+
+def _buscar_pdf_bytes(inter: InterService, boleto: Boleto) -> Optional[bytes]:
+    if _pdf_existe_localmente(boleto):
+        try:
+            with boleto.pdf.open("rb") as stream:
+                return stream.read()
+        except FileNotFoundError:
+            # Arquivo foi removido do disco; força re-download via API.
+            pass
 
     identificadores = [
         (boleto.nosso_numero, "nosso_numero"),
@@ -1473,8 +1547,13 @@ def gerar_boletos(request):
                     }
                 )
                 if not created:
-                    messages.info(request, f"Boleto jÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¡ existia: {cli.nome} {mes:02d}/{ano}")
-                    continue
+                    if boleto.status == Boleto.STATUS_CANCELADO:
+                        _preparar_boleto_para_reemissao(boleto)
+                        boleto.data_vencimento = data_venc
+                        boleto.valor = cli.valorNominal
+                    else:
+                        messages.info(request, f"Boleto já existia: {cli.nome} {mes:02d}/{ano}")
+                        continue
 
                 # Monta dict no formato esperado pelo serviÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§o (Banco Inter)
                 cli_dict = {
@@ -1525,10 +1604,12 @@ def baixar_pdf_view(request, boleto_id: int):
         )
         return redirect("boletos_list")
 
-    if not boleto.pdf:
-        filename = _arquivo_pdf_nome(boleto)
+    if not _pdf_existe_localmente(boleto):
+        filename = Path(boleto.pdf.name).name if boleto.pdf else _arquivo_pdf_nome(boleto)
         boleto.pdf.save(filename, ContentFile(pdf_bytes))
         boleto.save(update_fields=["pdf"])
+    if not boleto.codigo_barras:
+        _atualizar_codigo_barras_via_inter(inter, boleto)
 
     stored_name = Path(boleto.pdf.name).name if boleto.pdf else _arquivo_pdf_nome(boleto)
     return FileResponse(
@@ -1568,10 +1649,12 @@ def baixar_pdf_lote(request):
                 continue
 
             sucesso += 1
-            if not boleto.pdf:
-                filename = _arquivo_pdf_nome(boleto)
+            if not _pdf_existe_localmente(boleto):
+                filename = Path(boleto.pdf.name).name if boleto.pdf else _arquivo_pdf_nome(boleto)
                 boleto.pdf.save(filename, ContentFile(pdf_bytes))
                 boleto.save(update_fields=["pdf"])
+            if not boleto.codigo_barras:
+                _atualizar_codigo_barras_via_inter(inter, boleto)
 
             stored_name = Path(boleto.pdf.name).name if boleto.pdf else _arquivo_pdf_nome(boleto)
             nome_zip = stored_name
@@ -1795,9 +1878,10 @@ def enviar_boletos_whatsapp(request):
         telefone_whatsapp = format_whatsapp_phone(cliente)
         telefone_display = telefone_whatsapp.split("@")[0] if telefone_whatsapp else ""
         bloqueios: List[str] = []
+        pdf_disponivel = _pdf_existe_localmente(boleto)
         if not telefone_whatsapp:
             bloqueios.append("Telefone do cliente invalido ou ausente.")
-        if not boleto.pdf:
+        if not pdf_disponivel:
             bloqueios.append("PDF do boleto ainda não foi baixado.")
         tabela_boletos.append(
             {
@@ -1810,8 +1894,8 @@ def enviar_boletos_whatsapp(request):
                 "telefone_whatsapp": telefone_whatsapp,
                 "telefone_bruto": f"{cliente.ddd or ''}{cliente.telefone or ''}",
                 "codigo_barras": boleto.codigo_barras or boleto.linha_digitavel or "",
-                "pdf_url": boleto.pdf.url if boleto.pdf else "",
-                "pdf_disponivel": bool(boleto.pdf),
+                "pdf_url": boleto.pdf.url if pdf_disponivel else "",
+                "pdf_disponivel": pdf_disponivel,
                 "status_envio": status_map.get(boleto.id, "A enviar"),
                 "pode_enviar": not bloqueios,
                 "bloqueios": bloqueios,
